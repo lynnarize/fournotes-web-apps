@@ -29,7 +29,7 @@ const NEEDS_OWN_KEY = "[[NEEDS_OWN_KEY]]";
 
 /** General questions and anything beyond the app's own jobs need the user's own key (demo mode can't answer them either). */
 export const OWN_KEY_REQUIRED =
-  "General questions need your own AI key. Add a free OpenRouter key (or an Anthropic key) in Settings → API keys — the shared free AI only saves and looks up your notes, to-dos and money.";
+  "General questions need your own AI key. Add a free OpenRouter key (or an Anthropic key) in Settings → AI & API keys — the shared free AI only saves and looks up your notes, to-dos and money.";
 
 /**
  * Appended to the system prompt (after the cached prefix, so caching still works).

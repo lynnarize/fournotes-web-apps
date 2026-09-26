@@ -61,7 +61,7 @@ export function guardSharedKey(req: Request, keys: ResolvedKeys): NextResponse |
   const hosts = allowedHosts(req);
   if (hosts.length && (!from || !hosts.includes(from))) {
     return NextResponse.json(
-      { error: "The shared AI key only works inside the app. Add your own free key in Settings → API keys." },
+      { error: "The shared AI key only works inside the app. Add your own free key in Settings → AI & API keys." },
       { status: 403 },
     );
   }
@@ -69,7 +69,7 @@ export function guardSharedKey(req: Request, keys: ResolvedKeys): NextResponse |
   const account = signedInAs(req);
   if (!account && requireSignIn()) {
     return NextResponse.json(
-      { error: "Sign in with Google to use the app's shared AI, or add your own free key in Settings → API keys." },
+      { error: "Sign in with Google to use the app's shared AI, or add your own free key in Settings → AI & API keys." },
       { status: 401 },
     );
   }
@@ -85,8 +85,8 @@ export function guardSharedKey(req: Request, keys: ResolvedKeys): NextResponse |
     return NextResponse.json(
       {
         error: account
-          ? "The app's shared free AI allowance is used up for today. Add your own free OpenRouter key in Settings → API keys — it takes a minute and gives you your own allowance."
-          : "Today's shared AI allowance for visitors is used up. Sign in with Google for a bigger allowance, or add your own free key in Settings → API keys.",
+          ? "The app's shared free AI allowance is used up for today. Add your own free OpenRouter key in Settings → AI & API keys — it takes a minute and gives you your own allowance."
+          : "Today's shared AI allowance for visitors is used up. Sign in with Google for a bigger allowance, or add your own free key in Settings → AI & API keys.",
       },
       { status: 429 },
     );

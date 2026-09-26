@@ -13,6 +13,7 @@ import { showChange, useOpenAssistant } from "@/lib/nav";
 import type { ChangeLink } from "@/lib/store";
 import { canSaveAsNote, useAssistant, type UIMessage } from "./assistant";
 import Markdown from "./Markdown";
+import ModelMenu from "./ModelMenu";
 import { Dropdown, MenuItem, MenuSep } from "./notes/Dropdown";
 import ScanPicker from "./ScanPicker";
 import SplitEditor from "./SplitEditor";
@@ -41,7 +42,6 @@ const ROUND = "fn-press grid h-8 w-8 shrink-0 place-items-center rounded-full tr
 
 export default function ChatDock({ minimized = false, hero = false }: { minimized?: boolean; hero?: boolean }) {
   const { messages, busy, recording, liveTranscript, voice, queued, send, scan, startRecording, stopRecording, toggleVoice, clear } = useAssistant();
-  const route = useAiRoute();
   const toast = useToast();
   const [text, setText] = useState("");
   /** The conversation is showing over the page. */
@@ -286,11 +286,7 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
             </button>
           )}
           <span className="min-w-0 flex-1" />
-          {route.label && (
-            <span className="hidden truncate pr-1 text-[13px] text-[var(--faint)] sm:block" title={`Answers come from ${route.label}. Change it in Settings → AI & API keys.`}>
-              {route.label}
-            </span>
-          )}
+          <span className="min-w-0"><ModelMenu /></span>
           <button
             className={`${ROUND} ${recording ? "recording bg-[var(--danger)] text-white" : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)]"}`}
             title={recording ? "Stop and summarize" : "Record a voice note"}

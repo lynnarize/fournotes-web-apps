@@ -24,6 +24,7 @@ export interface UserKeys {
   sttKey?: string; // server-side transcription
   sttProvider?: SttProvider;
   aiProvider?: AiProvider; // which saved key AI requests use; unset = Claude, then OpenCode, then OpenRouter
+  sharedModel?: string; // with no key of your own: which tested free model the app's shared OpenRouter key uses
 }
 
 export {
@@ -148,6 +149,9 @@ export function keyHeaders(keys: UserKeys = getUserKeys()): Record<string, strin
       h["x-openrouter-model"] = k.openrouterPaidModel;
       h["x-openrouter-vision"] = k.openrouterPaidTextOnly ? "0" : "1";
     } else if (k.openrouterModel) h["x-openrouter-model"] = k.openrouterModel;
+  } else if (k.sharedModel) {
+    // The shared key only accepts models from the tested free list (see resolveKeys), so this can't spend credits.
+    h["x-openrouter-model"] = k.sharedModel;
   }
   if (k.opencodeKey && isValidKey(k.opencodeKey)) {
     h["x-opencode-key"] = k.opencodeKey;

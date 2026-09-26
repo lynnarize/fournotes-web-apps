@@ -1,6 +1,6 @@
 import "server-only";
 // Which credentials an AI request uses. A key the user brought (request headers,
-// set in Settings → API keys) wins, then the server's own keys, then demo mode.
+// set in Settings → AI & API keys) wins, then the server's own keys, then demo mode.
 // OpenRouter's free models are the default when no Anthropic key is present.
 // OpenCode Go (a subscription) works only with the user's own key.
 import {
@@ -55,7 +55,8 @@ export function resolveKeys(req: Request): ResolvedKeys {
   // A user's own key may pick any paid model (billed to them); free ones must be on the tested list.
   const requested = header(req, "x-openrouter-model");
   const userPaid = userOpenRouter && isModelId(requested) && !isFreeModel(requested) ? requested : undefined;
-  const orModel = userPaid || (userOpenRouter && allowed(requested, USER_OPENROUTER_MODELS)) || env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
+  // Anyone may pick from the tested free list, on their own key or the shared one (the composer's model menu).
+  const orModel = userPaid || allowed(requested, USER_OPENROUTER_MODELS) || env.OPENROUTER_MODEL || DEFAULT_OPENROUTER_MODEL;
   // Paid mode runs the quick jobs on the same model: switching to paid means leaving the free limits behind.
   const orFastModel = userPaid || env.OPENROUTER_FAST_MODEL || DEFAULT_OPENROUTER_FAST_MODEL;
   // The deployment's own key is shared by every visitor: keep it on free

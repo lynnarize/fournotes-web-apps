@@ -1,5 +1,5 @@
 "use client";
-// Settings → Bring your own API key.
+// Settings → AI & API keys.
 // One tab per provider keeps the section short. OpenRouter's free models come
 // first: one free key and the app is fully working. The same key can switch to
 // paid models; OpenCode Zen and Claude are the alternatives.

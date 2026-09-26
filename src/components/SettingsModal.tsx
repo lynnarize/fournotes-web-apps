@@ -6,6 +6,7 @@ import { useInstallPrompt } from "@/lib/hooks";
 import { alive, useStore, type ListKind } from "@/lib/store";
 import { useTheme } from "@/lib/theme";
 import { CURRENCIES } from "@/lib/types";
+import { wipeThisDevice } from "@/lib/wipe";
 import ApiKeysSection from "./ApiKeysSection";
 import AppearanceSection from "./AppearanceSection";
 import BriefStyleSection from "./BriefStyleSection";
@@ -19,6 +20,8 @@ import TypeToConfirm from "./TypeToConfirm";
 import { Icon, inputBox, Modal, useToast } from "./ui";
 
 const KOFI_URL = "https://ko-fi.com/lynnarize";
+/** The native Mac app's latest release (a disk image) on GitHub. */
+const MAC_DOWNLOAD_URL = "https://github.com/lynnarize/fournotes-macos/releases/latest";
 
 const PRIVACY_POINTS = [
   { icon: "shield", title: "Saved on this device", text: "Everything you add is stored in this browser. Nothing leaves it unless you use AI features or turn on sync." },
@@ -83,11 +86,7 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
   };
 
   const [confirmWipe, setConfirmWipe] = useState(false);
-  const deleteLocal = () => {
-    for (const k of Object.keys(localStorage)) if (k.startsWith("four-notes")) localStorage.removeItem(k);
-    for (const k of Object.keys(sessionStorage)) if (k.startsWith("four-notes")) sessionStorage.removeItem(k);
-    window.location.reload();
-  };
+  const deleteLocal = () => wipeThisDevice();
 
   const syncSummary = google.email
     ? `Google Drive · ${google.email}`
@@ -221,7 +220,23 @@ export default function SettingsModal({ open, onClose }: { open: boolean; onClos
           <ApiKeysSection />
         </SettingsSection>
 
-        <SettingsSection id="install" icon="download" title="Install app" summary="Use offline and open from your home screen">
+        <SettingsSection id="install" icon="download" title="Install app" summary="Use offline, or get the Mac app">
+          {/* The native Mac app: everything here, plus the edge dock, Apple Intelligence and models on your Mac. */}
+          <div className="mb-3 flex flex-col items-start gap-3 rounded-lg border border-[var(--line)] p-3 sm:flex-row sm:items-center">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[10px] bg-[var(--hover)]"><Icon name="monitor" size={20} /></span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">Four Notes for Mac</span>
+              <span className="block text-xs text-[var(--muted)]">A native app with the edge dock, Apple Intelligence and offline models. macOS 26 or later, free.</span>
+            </span>
+            <a
+              href={MAC_DOWNLOAD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="fn-press inline-flex shrink-0 items-center gap-2 rounded-lg bg-[var(--text)] px-3.5 py-2 text-sm font-medium text-[var(--bg)] hover:opacity-90"
+            >
+              <Icon name="download" size={15} /> Download for macOS
+            </a>
+          </div>
           {install ? (
             <button className="rounded-md border border-[var(--line)] px-3 py-1.5 hover:bg-[var(--hover)]" onClick={install}>Install Four Notes on this device</button>
           ) : (
