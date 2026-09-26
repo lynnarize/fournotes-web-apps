@@ -5,9 +5,10 @@
 import { useEffect, useState } from "react";
 import { activeProvider, useUserKeys } from "./byok";
 
-type Status = { anthropic?: boolean; openrouter?: boolean };
+export type ServerStatus = { anthropic?: boolean; openrouter?: boolean; model?: string; openrouterModel?: string };
+type Status = ServerStatus;
 let status: Promise<Status> | null = null;
-const serverStatus = () => (status ??= fetch("/api/ai/status").then((r) => r.json()).catch(() => ({})));
+export const serverStatus = () => (status ??= fetch("/api/ai/status").then((r) => r.json()).catch(() => ({})));
 
 export function useAiRoute() {
   const { keys } = useUserKeys();

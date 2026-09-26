@@ -242,7 +242,8 @@ export default function TodoView() {
 function TodoCard({ todo, selected, onOpen, onDragStart, onDragEnd, dragging }: {
   todo: Todo; selected: boolean; onOpen: () => void; onDragStart: () => void; onDragEnd: () => void; dragging: boolean;
 }) {
-  const { notes, settings } = useStore();
+  const { notes, settings, remove, updateTodo } = useStore();
+  const toast = useToast();
   const move = useMove();
   const justFiled = useFiledFlash(todo.id);
   const note = todo.noteId ? notes.find((n) => n.id === todo.noteId && !n.deletedAt) : undefined;
@@ -286,6 +287,20 @@ function TodoCard({ todo, selected, onOpen, onDragStart, onDragEnd, dragging }: 
             </span>
           )}
         </button>
+        {/* Done: clear it away in one click (Undo in the toast). */}
+        {todo.done && (
+          <button
+            className="-my-1 -mr-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--faint)] opacity-0 transition-opacity hover:bg-[var(--hover)] hover:text-[var(--danger)] focus:opacity-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
+            onClick={() => {
+              remove("todos", todo.id);
+              toast(`Deleted “${todo.title || "Untitled task"}”`, "ok", { label: "Undo", run: () => updateTodo(todo.id, { deletedAt: null }) });
+            }}
+            aria-label={`Delete “${todo.title || "Untitled task"}”`}
+            title="Delete"
+          >
+            <Icon name="trash" size={15} />
+          </button>
+        )}
         {todo.priority !== "medium" && !todo.done && (
           <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: PRIORITY_DOT[todo.priority] }} title={PRIORITY_LABEL[todo.priority]} aria-label={PRIORITY_LABEL[todo.priority]} />
         )}

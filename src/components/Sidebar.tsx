@@ -2,18 +2,22 @@
 // The sidebar, laid out like the macOS app (macos/FourNotes/Views/SidebarView.swift):
 // an account card, a search card, the four tabs as cards with the open one raised,
 // then quick capture and settings as flat rows.
+import { useState } from "react";
 import { usePulsingTabs } from "@/lib/highlight";
 import { isMac } from "@/lib/hooks";
 import { openItem } from "@/lib/nav";
 import { alive, localMonth, useStore } from "@/lib/store";
+import { useTheme, type ThemePref } from "@/lib/theme";
 import type { Tab } from "@/lib/types";
+import { wipeThisDevice } from "@/lib/wipe";
 import { useAssistant } from "./assistant";
 import { useCloud } from "./cloud";
 import { GOOGLE_STATUS_LABEL, useGoogleSync } from "./googleSync";
 import { Dropdown, MenuItem, MenuLabel, MenuSep } from "./notes/Dropdown";
 import ScanPicker from "./ScanPicker";
 import Logo from "./Logo";
-import { Icon } from "./ui";
+import TypeToConfirm from "./TypeToConfirm";
+import { Icon, useToast } from "./ui";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "today", label: "Today", icon: "today" },
@@ -66,48 +70,76 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
   const newTransaction = () => { const t = store.addTransaction({ merchant: "" }); setTab("finance"); openItem("transaction", t.id); onClose?.(); };
   const record = () => { recording ? stopRecording() : startRecording(); onClose?.(); };
 
+  // Signed in means Google Drive sync or a Supabase account; sign-out ends both, and keeps what's on this device.
+  const signedInAs = google.email ?? cloud.email ?? null;
+  const toast = useToast();
+  const [confirmWipe, setConfirmWipe] = useState(false);
+  const accountSync = google.email ? google.status : cloud.status;
+  /** Sign out, then erase this browser's copy. The synced copy stays and comes back on the next sign-in. */
+  const signOutAndWipe = async () => {
+    if (google.email) await google.disconnect(false);
+    if (cloud.email) await cloud.signOut();
+    await wipeThisDevice();
+  };
+  const signOut = async () => {
+    if (google.email) await google.disconnect(false);
+    if (cloud.email) {
+      await cloud.signOut();
+      toast("Signed out. Your data stays on this device.");
+    }
+    onClose?.();
+  };
+  const identity = (
+    <>
+      {initials ? (
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-[var(--accent)] text-[14px] font-semibold text-white">{initials}</span>
+      ) : (
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-[var(--bg)]"><Logo size={28} /></span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-semibold text-[var(--text)]">{name || "Four Notes"}</span>
+        <span className="block truncate text-xs text-[var(--faint)]">{spaceLabel}</span>
+      </span>
+    </>
+  );
+
   return (
     <nav className={`flex h-full flex-col bg-[var(--panel)] px-3.5 pb-4 pt-3.5 text-sm ${onClose ? "w-[86vw] max-w-[22rem] pt-[calc(env(safe-area-inset-top)+14px)]" : "w-64"}`}>
       {/* Account: whose notes these are, which space, and the two ways out of here */}
       <div className="flex items-center gap-1">
-        <Dropdown
-          label={`${name || "Four Notes"}, ${spaceLabel}`}
-          title="Spaces and settings"
-          width={250}
-          chevron={false}
-          className="flex h-[60px] min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 text-left transition-colors hover:bg-[var(--hover)]"
-          button={
-            <>
-              {initials ? (
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-[var(--accent)] text-[14px] font-semibold text-white">{initials}</span>
-              ) : (
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[9px] bg-[var(--bg)]"><Logo size={28} /></span>
-              )}
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-semibold text-[var(--text)]">{name || "Four Notes"}</span>
-                <span className="block truncate text-xs text-[var(--faint)]">{spaceLabel}</span>
-              </span>
-              <Icon name="chevronDown" size={14} className="shrink-0 text-[var(--muted)]" />
-            </>
-          }
-        >
-          {(close) => (
-            <>
-              {(spaces.length > 0 || cloud.email) && (
-                <>
-                  <MenuLabel>Space</MenuLabel>
-                  <MenuItem label="Personal" active={!currentSpaceId} onSelect={() => { close(); switchSpace(null); }} />
-                  {spaces.map((s) => (
-                    <MenuItem key={s.id} label={s.name} active={currentSpaceId === s.id} onSelect={() => { close(); switchSpace(s.id); }} />
-                  ))}
-                  <MenuSep />
-                </>
-              )}
-              <MenuItem icon="search" label="Search or quick add…" hint={`${isMac() ? "⌘" : "Ctrl"} K`} onSelect={() => { close(); search(); }} />
-              <MenuItem icon="settings" label="Settings…" onSelect={() => { close(); openSettings(); }} />
-            </>
-          )}
-        </Dropdown>
+        {signedInAs ? (
+          <Dropdown
+            label={`${name || "Four Notes"}, ${spaceLabel}`}
+            title={`Signed in as ${signedInAs}`}
+            width={260}
+            chevron={false}
+            className="flex h-[60px] min-w-0 flex-1 items-center gap-2.5 rounded-xl px-3 text-left transition-colors hover:bg-[var(--hover)]"
+            button={<>{identity}<Icon name="chevronDown" size={14} className="shrink-0 text-[var(--muted)]" /></>}
+          >
+            {(close) => (
+              <>
+                {/* Shared spaces (Supabase) are only there once signed in. */}
+                {spaces.length > 0 && (
+                  <>
+                    <MenuLabel>Space</MenuLabel>
+                    <MenuItem label="Personal" active={!currentSpaceId} onSelect={() => { close(); switchSpace(null); }} />
+                    {spaces.map((s) => (
+                      <MenuItem key={s.id} label={s.name} active={currentSpaceId === s.id} onSelect={() => { close(); switchSpace(s.id); }} />
+                    ))}
+                    <MenuSep />
+                  </>
+                )}
+                <MenuLabel>{signedInAs}</MenuLabel>
+                <MenuItem icon="logout" label="Sign out" onSelect={() => { close(); void signOut(); }} />
+                {/* Someone else's or a shared computer: leave nothing behind. */}
+                <MenuItem icon="trash" label="Sign out and remove data…" danger onSelect={() => { close(); setConfirmWipe(true); }} />
+              </>
+            )}
+          </Dropdown>
+        ) : (
+          // Not signed in: whose notes these are, nothing to open.
+          <div className="flex h-[60px] min-w-0 flex-1 items-center gap-2.5 px-3">{identity}</div>
+        )}
         {onClose && (
           <button className="tap-target fn-press fn-pop md:hidden" style={{ animationDelay: "120ms" }} onClick={onClose} aria-label="Close menu"><Icon name="x" size={20} /></button>
         )}
@@ -222,26 +254,81 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
         </button>
       </div>
 
-      {(google.enabled || cloud.enabled) && (
-        <button
-          className="mt-1 flex w-full items-center gap-2 rounded-lg px-3.5 py-1.5 text-left text-xs text-[var(--faint)] hover:bg-[var(--hover)]"
-          onClick={openSettings}
-          title={(google.email ? google.error : cloud.error) ?? undefined}
-        >
-          <Icon name="cloud" size={13} className={`shrink-0 ${syncTone}`} />
-          <span className="truncate">
-            {google.email
-              ? `${GOOGLE_STATUS_LABEL[google.status]} · Google Drive`
-              : cloud.enabled && cloud.email
-                ? `${STATUS_LABEL[cloud.status]} · ${cloud.email}`
-                : "Turn on sync"}
-          </span>
-        </button>
-      )}
+      {/* Sync status, with a quick switch between the looks beside it. */}
+      <div className="mt-1 flex items-center gap-1">
+        {google.enabled || cloud.enabled ? (
+          <button
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3.5 py-1.5 text-left text-xs text-[var(--faint)] hover:bg-[var(--hover)]"
+            onClick={openSettings}
+            title={(google.email ? google.error : cloud.error) ?? undefined}
+          >
+            <Icon name="cloud" size={13} className={`shrink-0 ${syncTone}`} />
+            <span className="truncate">
+              {google.email
+                ? `${GOOGLE_STATUS_LABEL[google.status]} · Google Drive`
+                : cloud.enabled && cloud.email
+                  ? `${STATUS_LABEL[cloud.status]} · ${cloud.email}`
+                  : "Turn on sync"}
+            </span>
+          </button>
+        ) : (
+          <span className="flex-1" />
+        )}
+        <ThemeSwitch />
+      </div>
 
       <button className={`${ROW} mt-0.5 h-[46px]`} onClick={openSettings}>
         <Icon name="settings" size={18} /> Settings
       </button>
+      <TypeToConfirm
+        open={confirmWipe}
+        onClose={() => setConfirmWipe(false)}
+        title="Sign out and remove data?"
+        confirmLabel="Sign out and remove"
+        onConfirm={signOutAndWipe}
+      >
+        <p>
+          For a shared or public computer: this signs <strong>{signedInAs}</strong> out and erases everything Four Notes keeps in this browser —
+          notes, tasks, spending, settings and saved API keys.
+        </p>
+        <p className="text-[var(--muted)]">
+          The synced copy in your account is kept, and comes back when you sign in again.
+          {accountSync !== "synced" && (
+            <> <strong className="text-[var(--danger)]">Some changes may not have synced yet</strong> ({accountSync}); they would be lost. Sync first if you can.</>
+          )}
+        </p>
+      </TypeToConfirm>
     </nav>
+  );
+}
+
+const LOOKS: { id: Exclude<ThemePref, "system">; label: string; icon: string }[] = [
+  { id: "light", label: "Light", icon: "today" },
+  { id: "paper", label: "Paper", icon: "book" },
+  { id: "dark", label: "Dark", icon: "moon" },
+];
+
+/** Light, Paper or Dark in one click. While following the device, the look it resolves to is lit. */
+function ThemeSwitch() {
+  const { pref, resolved, setPref } = useTheme();
+  return (
+    <div role="radiogroup" aria-label="Theme" className="flex shrink-0 items-center rounded-lg border border-[var(--line)] p-0.5">
+      {LOOKS.map((l) => {
+        const on = pref === "system" ? resolved === l.id : pref === l.id;
+        return (
+          <button
+            key={l.id}
+            role="radio"
+            aria-checked={on}
+            onClick={() => setPref(l.id)}
+            title={pref === "system" && on ? `${l.label} (following your device)` : l.label}
+            aria-label={l.label}
+            className={`grid h-7 w-7 place-items-center rounded-md transition-colors ${on ? "bg-[var(--bg)] text-[var(--text)] shadow-[0_1px_3px_rgba(0,0,0,0.12)]" : "text-[var(--faint)] hover:text-[var(--text)]"}`}
+          >
+            <Icon name={l.icon} size={14} />
+          </button>
+        );
+      })}
+    </div>
   );
 }

@@ -130,7 +130,7 @@ export class DemoProvider implements LLMProvider {
     return {
       kind: "other",
       reply: `Image saved to Notes. OCR and auto-sorting need an API key${DEMO}`,
-      actions: [{ type: "create_note", title: "Scanned image", content: "Add a free OpenRouter key in Settings → API keys to read images automatically." }],
+      actions: [{ type: "create_note", title: "Scanned image", content: "Add a free OpenRouter key in Settings → AI & API keys to read images automatically." }],
       demo: true,
     };
   }

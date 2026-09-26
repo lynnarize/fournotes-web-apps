@@ -101,3 +101,12 @@ GUIDE.md                      Setup guides, architecture and roadmap
 ## Privacy
 
 Data lives in your browser unless you turn on sync. Google Drive sync uses the hidden **appDataFolder**, so it is private to this app and invisible in your Drive. Receipt thumbnails stay on the device. Photos and recordings are sent to whichever AI provider is configured, and Settings → Data & privacy lets you export everything or delete it.
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.

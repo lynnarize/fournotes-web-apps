@@ -283,7 +283,7 @@ function QuickNotes({ quick, onMore }: { quick: Note[]; onMore: () => void }) {
   };
   const shown = quick.slice(0, 3);
   return (
-    <div className="w-full max-w-[340px] space-y-3 justify-self-center lg:justify-self-auto">
+    <div className="w-full max-w-[340px] space-y-3">
       <form
         onSubmit={(e) => { e.preventDefault(); save(); }}
         className={`flex items-start gap-2.5 rounded-[14px] border bg-[var(--card-paper)] px-4 py-3.5 transition-colors focus-within:border-[color-mix(in_srgb,var(--accent)_55%,transparent)] ${

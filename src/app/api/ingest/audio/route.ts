@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     }
     if (!transcript) {
       return NextResponse.json(
-        { error: "No speech detected. Add a speech-to-text key in Settings → API keys, or use a browser with live transcription (Chrome/Edge/Safari)." },
+        { error: "No speech detected. Add a speech-to-text key in Settings → AI & API keys, or use a browser with live transcription (Chrome/Edge/Safari)." },
         { status: 422 },
       );
     }
@@ -53,7 +53,7 @@ async function transcribe(file: File, stt: ResolvedKeys["stt"]): Promise<string>
     body,
   });
   if (res.status === 401 || res.status === 403) {
-    throw new Error(stt.source === "user" ? "Your speech-to-text key was rejected. Check it in Settings → API keys." : "Transcription key was rejected.");
+    throw new Error(stt.source === "user" ? "Your speech-to-text key was rejected. Check it in Settings → AI & API keys." : "Transcription key was rejected.");
   }
   if (!res.ok) throw new Error(`Transcription failed (${res.status})`);
   const json = (await res.json()) as { text?: string };

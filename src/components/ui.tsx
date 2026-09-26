@@ -124,6 +124,7 @@ const paths: Record<string, string> = {
   calendar: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
   menu: "M4 7h16M4 12h16M4 17h16",
   x: "M6 6l12 12M18 6L6 18",
+  logout: "M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 16l4-4-4-4M19 12H9",
   sparkle: "M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z",
   chevron: "M9 6l6 6-6 6",
   arrowRight: "M5 12h14M13 6l6 6-6 6",

@@ -121,7 +121,7 @@ const RECEIPT_NUDGE =
   "That is a receipt, but the receipt fields were missing. Call file_capture again with kind 'receipt' and fill " +
   "receipt: {merchant, total (grand total as a number, 'Rp 128.500' = 128500), date, category, items}. " +
   "Put line items in receipt.items, never in todos.";
-const COULD_NOT_ACT = "I couldn't do that with this free model. Try again, or pick another model in Settings → API keys.";
+const COULD_NOT_ACT = "I couldn't do that with this free model. Try again, or pick another model in Settings → AI & API keys.";
 const COULD_NOT_ANSWER = "I couldn't answer that right now. Try again in a moment.";
 /** Safety classifiers and other non-chat models reachable through the free router ("User Safety: safe"). */
 const CLASSIFIER = /^\s*(user|response|prompt)\s+safety\s*:|^\s*(safe|unsafe)\s*(\n|$)/im;
@@ -205,27 +205,27 @@ export class OpenRouterProvider implements LLMProvider {
       }
       // 403 is also used for policy refusals of one model (OpenCode: "inference_failed"): only blame the key when it says so.
       if (status === 401 || (status === 403 && (!detail || /api key|invalid key|unauthori[sz]ed|authenticat/i.test(detail)))) {
-        throw new ProviderError(`Your ${name} key was rejected. Check it in Settings → API keys.`, 401);
+        throw new ProviderError(`Your ${name} key was rejected. Check it in Settings → AI & API keys.`, 401);
       }
       if (status === 403) {
         console.warn(`[ai:${this.gateway}] 403 model=${body.model}: ${detail}`);
-        throw new ProviderError(`${name} refused ${body.model}: ${detail.slice(0, 200)} Try another model in Settings → API keys.`, 403);
+        throw new ProviderError(`${name} refused ${body.model}: ${detail.slice(0, 200)} Try another model in Settings → AI & API keys.`, 403);
       }
       if (this.gateway === "opencode") {
         // Go is a subscription: 402/429 mean no active plan, or a 5-hour / weekly / monthly limit reached.
-        if (status === 402) throw new ProviderError("This key has no active OpenCode Go subscription. Subscribe at opencode.ai/go, or use another key in Settings → API keys.", 402);
-        if (status === 429) throw new ProviderError("You've reached your OpenCode Go usage limit for now. Wait for it to reset, or use another key in Settings → API keys.", 429);
+        if (status === 402) throw new ProviderError("This key has no active OpenCode Go subscription. Subscribe at opencode.ai/go, or use another key in Settings → AI & API keys.", 402);
+        if (status === 429) throw new ProviderError("You've reached your OpenCode Go usage limit for now. Wait for it to reset, or use another key in Settings → AI & API keys.", 429);
       }
-      if (status === 402) throw new ProviderError(`That ${name} model needs credits. Add some, or choose a free model in Settings → API keys.`, 402);
+      if (status === 402) throw new ProviderError(`That ${name} model needs credits. Add some, or choose a free model in Settings → AI & API keys.`, 402);
       if (!openRouter) {
-        if (status === 429) throw new ProviderError(`${name}'s rate limit was hit. Wait a moment, or pick another model in Settings → API keys.`, 429);
-        if (modelGone) throw new ProviderError(`${name} doesn't offer ${body.model} any more. Pick another model in Settings → API keys.`, 404);
+        if (status === 429) throw new ProviderError(`${name}'s rate limit was hit. Wait a moment, or pick another model in Settings → AI & API keys.`, 429);
+        if (modelGone) throw new ProviderError(`${name} doesn't offer ${body.model} any more. Pick another model in Settings → AI & API keys.`, 404);
         if (status >= 500) throw new ProviderError(`${name} is busy right now. Try again in a moment.`, 503);
         throw new ProviderError(detail || `${name} request failed (${status})`, status);
       }
       // 429 is either this account's limit or the model's shared free pool being full upstream.
       if (status === 429 && /upstream/i.test(`${json.error?.metadata?.limit_source ?? ""} ${json.error?.metadata?.raw ?? ""}`)) {
-        throw new ProviderError("This free model is busy right now. Try again in a moment, or pick another model in Settings → API keys.", 503);
+        throw new ProviderError("This free model is busy right now. Try again in a moment, or pick another model in Settings → AI & API keys.", 503);
       }
       if (status === 429) throw new ProviderError("You've hit the free AI limit for now (per minute or per day). Wait a bit, or add credits to your OpenRouter account.", 429);
       if (modelGone) throw new ProviderError("No free model is available on OpenRouter right now. Try again in a moment.", 503);
