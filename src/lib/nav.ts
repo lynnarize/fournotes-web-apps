@@ -4,6 +4,7 @@
 import { useEffect, useRef } from "react";
 import { markFiled } from "./highlight";
 import type { ChangeLink } from "./store";
+import type { Tab } from "./types";
 
 export type FocusKind = "note" | "todo" | "transaction" | "budget" | "sticky";
 export type Focus = { kind: FocusKind; id: string };
@@ -88,6 +89,24 @@ export function scrollToId(domId: string, block: ScrollLogicalPosition = "center
     if (++tries < 60) requestAnimationFrame(attempt);
   };
   requestAnimationFrame(attempt);
+}
+
+// ---- Tabs ------------------------------------------------------------------------------
+const TAB_EVT = "four-notes:open-tab";
+
+/** Go to one of the four places from anywhere (the page shell listens). */
+export function openTab(tab: Tab) {
+  window.dispatchEvent(new CustomEvent<Tab>(TAB_EVT, { detail: tab }));
+}
+
+export function useOpenTab(cb: (tab: Tab) => void) {
+  const ref = useRef(cb);
+  ref.current = cb;
+  useEffect(() => {
+    const on = (e: Event) => ref.current((e as CustomEvent<Tab>).detail);
+    window.addEventListener(TAB_EVT, on);
+    return () => window.removeEventListener(TAB_EVT, on);
+  }, []);
 }
 
 // ---- Assistant ------------------------------------------------------------------------

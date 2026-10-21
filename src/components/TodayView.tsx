@@ -15,6 +15,7 @@ import { openItem } from "@/lib/nav";
 import { isQuick, quickNote } from "@/lib/quickNote";
 import { alive, formatMoney, localDate, localMonth, useStore } from "@/lib/store";
 import type { BriefInput, Note, Tab, Todo } from "@/lib/types";
+import { useAssistant } from "./assistant";
 import { Glyph } from "./assistant/icons";
 import ChatDock from "./ChatDock";
 import { Dropdown, MenuItem } from "./notes/Dropdown";
@@ -27,6 +28,7 @@ const HEAD_LINK = "flex min-h-8 items-center rounded-full px-1 text-[13px] text-
 
 export default function TodayView({ setTab }: { setTab: (t: Tab) => void }) {
   const { todos, transactions, stickies, notes, settings, briefs, saveBrief, toggleTodo, addNote, remove } = useStore();
+  const { todayChat } = useAssistant();
   const toast = useToast();
   const online = useOnline();
   const now = useNow();
@@ -166,6 +168,9 @@ export default function TodayView({ setTab }: { setTab: (t: Tab) => void }) {
   const said = briefLines.map((l) => l.toLowerCase());
   const freshAlerts = alerts.filter((a) => !said.some((l) => l.includes(a.toLowerCase().slice(0, 18))));
   const styleLabel = BRIEF_STYLES.find((s) => s.id === style)?.label ?? "One paragraph";
+
+  // Once you send, the conversation takes the page: the composer moves to the bottom.
+  if (todayChat) return <ChatDock conversation />;
 
   return (
     <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-start gap-10 pb-[136px] pt-5 md:pb-12 md:pt-[72px]">
