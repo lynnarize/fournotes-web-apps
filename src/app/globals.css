@@ -1,31 +1,79 @@
 @import "tailwindcss";
 
-/* Notion-like neutral palette, shared with the macOS app (Design/Theme.swift).
-   Components use these tokens via Tailwind's arbitrary values, e.g. bg-[var(--panel)]. */
+/* Design tokens, after Arc (uiarc.dev): neutral surfaces, hairline borders, one accent spent
+   on what is selected or active. Two vocabularies on purpose: the Arc role names (--surface,
+   --foreground, --border…) for new work, and the short names the components grew up with
+   (--bg, --text, --line…), mapped onto those roles. Shared with the macOS app (Design/Theme.swift).
+   Components use these through Tailwind's arbitrary values, e.g. bg-[var(--surface)]. */
 :root {
   color-scheme: light;
-  --logo-ink: #000000;
-  --logo-red: #fe2629;
-  --bg: #ffffff;
-  --panel: #f7f7f5;
-  --text: #37352f;
-  --muted: #6b6a66;
-  --faint: #8c8983;
-  --line: #e9e9e7;
-  --hover: rgba(55, 53, 47, 0.06);
-  --accent: #2383e2;
-  --danger: #e03e3e;
-  --ok: #0f7b6c;
-  /* Corner radii, matching FN.radius / cardRadius in the macOS app. */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 12px;
-  --r-xl: 16px;
+  --background: oklch(100% 0 0);
+  --surface: oklch(100% 0 0);
+  --surface-raised: oklch(100% 0 0);
+  --surface-muted: oklch(97.6% 0 0);
+  --sidebar: oklch(98.7% 0 0);
+  --foreground: oklch(17% 0 0);
+  --text-secondary: oklch(44% 0 0);
+  --text-muted: oklch(52% 0 0);
+  --border: oklch(92.5% 0 0);
+  --border-subtle: oklch(95.5% 0 0);
+  --border-strong: oklch(83% 0 0);
+  /* The accent: neutral ink by default, or the hue picked in Settings (data-accent below). */
+  --accent: oklch(30% 0 0);
+  --accent-strong: oklch(22% 0 0);
+  --accent-subtle: oklch(30% 0 0 / 0.07);
+  --accent-foreground: oklch(100% 0 0);
+  --control-track: oklch(89.5% 0 0);
+  /* Status colours mean status: done, needs attention, failed. Never decoration. */
+  --success: oklch(48% 0.15 150);
+  --success-subtle: oklch(60% 0.15 150 / 0.12);
+  --warning: oklch(51% 0.13 65);
+  --warning-subtle: oklch(80% 0.15 80 / 0.22);
+  --danger: oklch(53% 0.2 25);
+  --danger-subtle: oklch(60% 0.2 25 / 0.1);
+  /* Chart series, told apart by lightness as well as hue. */
+  --s1: oklch(30% 0 0);
+  --s2: oklch(60% 0.14 255);
+  --s3: oklch(80% 0.13 80);
+  --s4: oklch(89% 0.035 255);
+  --s5: oklch(70% 0.12 165);
+  --shadow-resting: 0 1px 2px oklch(0% 0 0 / 0.035);
+  --shadow-floating: 0 20px 48px oklch(0% 0 0 / 0.105), 0 3px 10px oklch(0% 0 0 / 0.045);
+  /* Concentric corners: a nested corner is the outer radius minus the padding between them. */
+  --radius-control: 18px;
+  --radius-panel: 26px;
+  --radius-surface: 34px;
+  --font-display: var(--font-geist), "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), "Inter", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  /* The mark: a navy pen stroke and a red spark. */
+  --logo-ink: #0f0b4c;
+  --logo-red: #e53437;
+  /* A quick note keeps its colour as a small dot. */
+  --note-yellow: oklch(84% 0.13 90);
+  --note-pink: oklch(76% 0.12 15);
+  --note-blue: oklch(74% 0.09 235);
+  --note-green: oklch(76% 0.11 150);
+
+  /* The short names, mapped onto the roles above. */
+  --bg: var(--background);
+  --panel: var(--surface-muted);
+  --text: var(--foreground);
+  --muted: var(--text-secondary);
+  --faint: var(--text-muted);
+  --line: var(--border);
+  --hover: oklch(17% 0 0 / 0.045);
+  --ok: var(--success);
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --shadow: var(--shadow-floating);
+  --font-serif: var(--font-display);
+  --card-paper: var(--surface);
   --sticky-yellow: #fbf3db;
   --sticky-pink: #fbe4e4;
   --sticky-blue: #e7f3f8;
   --sticky-green: #edf3ec;
-  --shadow: 0 1px 2px rgba(15, 15, 15, 0.06), 0 4px 16px rgba(15, 15, 15, 0.06);
   /* To-Do board columns: a tint for backgrounds, and a darker "ink" for text (4.5:1+). */
   --board-red: #e03e3e;
   --board-red-ink: #b42d1f;
@@ -36,43 +84,44 @@
   --board-col-mix: 6%;
   --board-card-mix: 0%;
   --board-label-mix: 22%;
-  /* Finance charts: lavender, lime green, ink, amber, sky; --fin-rest for "other" and empty bars. */
-  --fin-a: #8b7cf0;
-  --fin-b: #6fd08a;
-  --fin-c: #37352f;
-  --fin-d: #f0a93b;
-  --fin-e: #5aa9e6;
-  --fin-rest: #e6e5e1;
-  /* Today's and setup's soft light: a warm and a cool glow over the page colour. */
+  /* Finance charts use the series above; --fin-rest is "other" and empty bars. */
+  --fin-a: var(--s2);
+  --fin-b: var(--s5);
+  --fin-c: var(--s1);
+  --fin-d: var(--s3);
+  --fin-e: var(--s4);
+  --fin-rest: var(--control-track);
   --calm-warm: #f6c7b6;
   --calm-cool: #c9ddf3;
   --calm-glow: 45%;
-  /* Quick-note cards on Today sit a shade apart from the page. */
-  --card-paper: #ffffff;
-  /* Titles: the system serif where there is one (New York on Apple), else Newsreader. */
-  --font-serif: ui-serif, "New York", var(--font-newsreader), Georgia, "Times New Roman", serif;
 }
 
-/* Paper: light, on warm paper — cream pages, ink-brown text, a terracotta accent. */
+/* Paper: light, on warm paper — cream pages, ink-brown text. */
 :root[data-theme="paper"] {
   color-scheme: light;
-  --logo-ink: #2e2819;
-  --logo-red: #d2402b;
-  --bg: #fbf6e8;
-  --panel: #f4edd9;
-  --text: #3a3326;
-  --muted: #6b624f;
-  --faint: #857b66;
-  --line: #e6dcc2;
-  --hover: rgba(58, 51, 38, 0.07);
-  --accent: #b0582a;
-  --danger: #c23b2c;
-  --ok: #3f7a4e;
+  --background: oklch(98.3% 0.011 85);
+  --surface: oklch(99.3% 0.007 85);
+  --surface-raised: oklch(99.3% 0.007 85);
+  --surface-muted: oklch(95.6% 0.016 85);
+  --sidebar: oklch(96.9% 0.014 85);
+  --foreground: oklch(27% 0.02 65);
+  --text-secondary: oklch(43% 0.028 65);
+  --text-muted: oklch(50% 0.028 65);
+  --border: oklch(90.5% 0.02 85);
+  --border-subtle: oklch(93.8% 0.016 85);
+  --border-strong: oklch(80% 0.028 80);
+  --accent: oklch(34% 0.03 60);
+  --accent-strong: oklch(26% 0.03 60);
+  --accent-subtle: oklch(40% 0.05 60 / 0.09);
+  --control-track: oklch(88% 0.02 80);
+  --s1: oklch(34% 0.03 60);
+  --s4: oklch(88% 0.035 85);
+  --hover: oklch(40% 0.05 60 / 0.06);
+  --shadow-floating: 0 20px 48px oklch(35% 0.05 70 / 0.12), 0 3px 10px oklch(35% 0.05 70 / 0.06);
   --sticky-yellow: #f6ecc8;
   --sticky-pink: #f6e0d6;
   --sticky-blue: #e4edea;
   --sticky-green: #e8eed8;
-  --shadow: 0 1px 2px rgba(90, 70, 30, 0.08), 0 4px 16px rgba(90, 70, 30, 0.1);
   --board-red: #c9503e;
   --board-red-ink: #a43a2a;
   --board-amber: #c99a2e;
@@ -82,39 +131,51 @@
   --board-col-mix: 7%;
   --board-card-mix: 0%;
   --board-label-mix: 24%;
-  --fin-a: #9a7fd6;
-  --fin-b: #7db88a;
-  --fin-c: #3a3326;
-  --fin-d: #e0a040;
-  --fin-e: #6fa3c8;
-  --fin-rest: #e6dcc2;
   --calm-warm: #f2c9a8;
   --calm-cool: #d3e1d6;
   --calm-glow: 50%;
-  --card-paper: #fffcf3;
 }
 
-/* Dark theme: <html data-theme="dark"> is set before first paint from
-   Settings → Appearance (System follows the device). See src/lib/theme.ts. */
+/* Dark: <html data-theme="dark"> is set before first paint from Settings → Appearance
+   (System follows the device). See src/lib/theme.ts. */
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --logo-ink: #f2f2f0;
-  --logo-red: #ff3b3e;
-  --bg: #191919;
-  --panel: #202020;
-  --text: #e6e6e4;
-  --muted: #aaa9a5;
-  --faint: #8a8984;
-  --line: #2f2f2f;
-  --hover: rgba(255, 255, 255, 0.06);
-  --accent: #529cca;
-  --danger: #ff7369;
-  --ok: #4dab9a;
+  --background: oklch(19% 0 0);
+  --surface: oklch(21.5% 0 0);
+  --surface-raised: oklch(24% 0 0);
+  --surface-muted: oklch(25.5% 0 0);
+  --sidebar: oklch(20.5% 0 0);
+  --foreground: oklch(96% 0 0);
+  --text-secondary: oklch(78% 0 0);
+  --text-muted: oklch(67% 0 0);
+  --border: oklch(29% 0 0);
+  --border-subtle: oklch(25% 0 0);
+  --border-strong: oklch(40% 0 0);
+  --accent: oklch(92% 0 0);
+  --accent-strong: oklch(97% 0 0);
+  --accent-subtle: oklch(92% 0 0 / 0.1);
+  --accent-foreground: oklch(19% 0 0);
+  --control-track: oklch(33% 0 0);
+  --success: oklch(78% 0.17 150);
+  --success-subtle: oklch(70% 0.17 150 / 0.16);
+  --warning: oklch(84% 0.15 80);
+  --warning-subtle: oklch(80% 0.15 80 / 0.16);
+  --danger: oklch(76% 0.17 25);
+  --danger-subtle: oklch(70% 0.2 25 / 0.16);
+  --s1: oklch(93% 0 0);
+  --s2: oklch(68% 0.14 255);
+  --s3: oklch(80% 0.13 80);
+  --s4: oklch(46% 0.04 255);
+  --s5: oklch(72% 0.12 165);
+  --shadow-resting: 0 1px 2px oklch(0% 0 0 / 0.18);
+  --shadow-floating: 0 22px 55px oklch(0% 0 0 / 0.4), 0 3px 10px oklch(0% 0 0 / 0.3);
+  --logo-ink: #fffbf7;
+  --logo-red: #ee1923;
+  --hover: oklch(100% 0 0 / 0.06);
   --sticky-yellow: #3a3326;
   --sticky-pink: #3d2828;
   --sticky-blue: #22323b;
   --sticky-green: #253129;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 16px rgba(0, 0, 0, 0.3);
   --board-red: #c4554d;
   --board-red-ink: #f08a7f;
   --board-amber: #c29343;
@@ -124,17 +185,23 @@
   --board-col-mix: 9%;
   --board-card-mix: 16%;
   --board-label-mix: 55%;
-  --fin-a: #b8a9ff;
-  --fin-b: #a6ec9f;
-  --fin-c: #f2f2f0;
-  --fin-d: #f5c26b;
-  --fin-e: #7cc4f5;
-  --fin-rest: #333333;
   --calm-warm: #5a2e26;
   --calm-cool: #1f3550;
   --calm-glow: 42%;
-  --card-paper: var(--panel);
 }
+
+/* Accent hues (Settings → Appearance), on <html data-accent="…">. "neutral" uses the theme's own ink.
+   Light values keep white text at 4.5:1 or better; dark values are lighter for dark surfaces. */
+:root[data-accent="blue"] { --accent: #0562ef; --accent-strong: #074db7; --accent-subtle: rgb(5 98 239 / 0.1); --accent-foreground: #fff; }
+:root[data-accent="violet"] { --accent: #7747ff; --accent-strong: #5528ce; --accent-subtle: rgb(119 71 255 / 0.1); --accent-foreground: #fff; }
+:root[data-accent="green"] { --accent: #087c54; --accent-strong: #06603f; --accent-subtle: rgb(13 184 121 / 0.12); --accent-foreground: #fff; }
+:root[data-accent="coral"] { --accent: #d8433a; --accent-strong: #b92c27; --accent-subtle: rgb(241 95 85 / 0.12); --accent-foreground: #fff; }
+:root[data-accent="rose"] { --accent: #c73580; --accent-strong: #ae2570; --accent-subtle: rgb(237 78 157 / 0.12); --accent-foreground: #fff; }
+:root[data-theme="dark"][data-accent="blue"] { --accent: #6ba3ff; --accent-strong: #a4c7ff; --accent-subtle: rgb(107 163 255 / 0.16); --accent-foreground: #0b1424; }
+:root[data-theme="dark"][data-accent="violet"] { --accent: #a78bff; --accent-strong: #c7b7ff; --accent-subtle: rgb(167 139 255 / 0.16); --accent-foreground: #140d26; }
+:root[data-theme="dark"][data-accent="green"] { --accent: #53dca6; --accent-strong: #93efd0; --accent-subtle: rgb(83 220 166 / 0.14); --accent-foreground: #08201a; }
+:root[data-theme="dark"][data-accent="coral"] { --accent: #ff9386; --accent-strong: #ffc1ba; --accent-subtle: rgb(255 147 134 / 0.15); --accent-foreground: #21110f; }
+:root[data-theme="dark"][data-accent="rose"] { --accent: #ff8bc5; --accent-strong: #ffc0df; --accent-subtle: rgb(255 139 197 / 0.15); --accent-foreground: #250f1b; }
 
 html,
 body {
@@ -144,25 +211,25 @@ body {
   transition: background-color 0.2s ease, color 0.2s ease;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-open-sans), ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-family: var(--font-body);
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Titles in the serif, as the macOS app sets them. */
-.fn-serif {
-  font-family: var(--font-serif);
+/* Headings 30px and up: Geist, regular weight, tight tracking. Hierarchy comes from size and colour, not bold. */
+.fn-serif,
+.fn-display {
+  font-family: var(--font-display);
   font-weight: 400;
-  letter-spacing: -0.012em;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
 }
+/* Numbers that change or line up in columns. */
+.fn-num { font-variant-numeric: tabular-nums; }
 
-/* Today and first-run setup: a soft wash of warm and cool light over the page colour.
-   Radial glows, not a mesh, so it is cheap to draw behind a page. */
+/* Kept for the screens that still name it; the redesign has no wash behind the page. */
 .fn-calm {
-  background:
-    radial-gradient(47vmax circle at 42% 28%, color-mix(in srgb, var(--calm-warm) var(--calm-glow), transparent), transparent 70%),
-    radial-gradient(42vmax circle at 82% 82%, color-mix(in srgb, var(--calm-cool) var(--calm-glow), transparent), transparent 70%),
-    radial-gradient(30vmax circle at 10% 95%, color-mix(in srgb, var(--calm-warm) calc(var(--calm-glow) * 0.7), transparent), transparent 70%),
-    var(--bg);
+  background: var(--bg);
 }
 
 /* One focus ring everywhere, and only for keyboard users (a click doesn't leave one behind). */
@@ -176,8 +243,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 .secret-mask::placeholder { -webkit-text-security: none; }
 
 .btn-ghost {
-  border-radius: 6px;
-  padding: 4px 8px;
+  border-radius: 9999px;
+  padding: 4px 10px;
   color: var(--muted);
   transition: background 0.12s;
 }
@@ -239,11 +306,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border-radius: 4px;
-  padding: 1px 6px;
+  border-radius: 9999px;
+  padding: 2px 8px;
   font-size: 12px;
-  background: var(--hover);
-  color: var(--muted);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .scroll-thin::-webkit-scrollbar {
@@ -268,12 +335,12 @@ button, input, select, textarea {
 }
 
 kbd {
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0 4px;
+  border-radius: 6px;
+  padding: 1px 6px;
   font-size: 11px;
   font-family: inherit;
-  color: var(--faint);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
 }
 
 /* Annual report print view (Finance -> Report -> Print / Save as PDF) */
@@ -321,7 +388,7 @@ kbd {
   background: #ffffff;
   color: #1f1f1f;
   /* Google's branding spec: Google Sans Medium 14/20. */
-  font-family: var(--font-google-sans), var(--font-open-sans), sans-serif;
+  font-family: var(--font-google-sans), var(--font-body);
   font-size: 14px;
   line-height: 20px;
   font-weight: 500;
@@ -479,64 +546,38 @@ kbd {
 @keyframes fn-raise { from { transform: translateY(0) scale(0.73); } to { transform: translateY(-14px) scale(1); } }
 .fn-raise { display: block; animation: fn-raise 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.25s both; }
 
-/* ---- To-Do board --------------------------------------------------------------- */
-[data-hue="red"] { --hue: var(--board-red); --hue-ink: var(--board-red-ink); }
-[data-hue="amber"] { --hue: var(--board-amber); --hue-ink: var(--board-amber-ink); }
-[data-hue="green"] { --hue: var(--board-green); --hue-ink: var(--board-green-ink); }
-.board-col { background: color-mix(in srgb, var(--hue) var(--board-col-mix), var(--bg)); }
-.board-drop { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--hue) 60%, transparent); }
+/* ---- To-Do board ---------------------------------------------------------------
+   Neutral columns on the muted surface; cards rest on a hairline. Colour is kept for
+   real status only (due soon, overdue), and always comes with words. */
+.board-col { background: var(--surface-muted); border-radius: var(--radius-panel); transition: box-shadow 0.15s, background-color 0.15s; }
+.board-drop { background: color-mix(in srgb, var(--accent) 5%, var(--surface-muted)); box-shadow: inset 0 0 0 1.5px var(--accent); }
 .board-card {
-  background: color-mix(in srgb, var(--hue) var(--board-card-mix), var(--bg));
-  box-shadow: 0 1px 2px rgba(15, 15, 15, 0.06), 0 0 0 1px color-mix(in srgb, var(--hue) 14%, transparent);
-  color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-control);
+  color: var(--foreground); transition: border-color 0.15s, box-shadow 0.15s, opacity 0.15s;
 }
-.board-card:hover { box-shadow: 0 2px 8px rgba(15, 15, 15, 0.08), 0 0 0 1px color-mix(in srgb, var(--hue) 30%, transparent); }
+.board-card:hover { border-color: var(--border-strong); }
 .board-card[draggable="true"] { cursor: grab; }
-.board-new { border-color: color-mix(in srgb, var(--hue) 28%, transparent); }
-.board-label { background: color-mix(in srgb, var(--hue) var(--board-label-mix), var(--bg)); color: var(--text); }
-.board-ink { color: var(--hue-ink); }
-.board-selected, .board-selected:hover { box-shadow: 0 0 0 2px var(--accent); }
-/* Task panel property values: plain until hovered, like Notion. */
+.board-selected, .board-selected:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-subtle); }
+/* The empty column: a dashed outline in the card's place. */
+.board-empty { border: 1.5px dashed var(--border-strong); border-radius: var(--radius-control); }
+/* Task panel property values: plain until hovered. */
 .prop-input {
-  min-height: 36px; width: 100%; border-radius: 8px; border: 1px solid transparent;
-  padding: 0 8px; background: transparent; color: var(--text); outline: none;
+  min-height: 36px; width: 100%; border-radius: 12px; border: 1px solid transparent;
+  padding: 0 10px; background: transparent; color: var(--foreground); outline: none;
+  transition: background-color 0.15s, border-color 0.15s;
 }
 .prop-input:hover { background: var(--hover); }
-.prop-input:focus { border-color: var(--accent); background: transparent; }
-.prop-input::placeholder, .prop-input[data-empty="true"] { color: var(--faint); }
-.prop-input:has(option) option { background: var(--bg); color: var(--text); }
+.prop-input:focus { border-color: var(--accent); background: var(--surface); }
+.prop-input::placeholder, .prop-input[data-empty="true"] { color: var(--text-muted); }
+.prop-input:has(option) option { background: var(--surface); color: var(--foreground); }
 
-/* ---- Finance: transaction rows with rounded hover (cells carry the background) ---- */
+/* ---- Finance ------------------------------------------------------------------- */
+/* Transaction rows: the cells carry the hover, so the open row reads as one piece with its details. */
 .tx-row > td { transition: background-color 0.12s; }
 .tx-row:hover > td, .tx-row[data-open="true"] > td { background: var(--hover); }
-.tx-row[data-open="true"] > td:first-child { border-bottom-left-radius: 0; }
-.tx-row[data-open="true"] > td:last-child { border-bottom-right-radius: 0; }
-
-/* ---- Finance dashboard ------------------------------------------------------- */
-.fin-delta {
-  display: inline-flex; align-items: center; gap: 2px; border-radius: 8px; border: 1px solid;
-  padding: 1px 7px; font-size: 12px; font-weight: 500; line-height: 18px;
-}
-.fin-good { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
-.fin-bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, transparent); border-color: color-mix(in srgb, var(--danger) 28%, transparent); }
-.fin-tab-on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-.fin-pill {
-  display: inline-flex; flex-shrink: 0; align-items: center; gap: 6px; border-radius: 8px; border: 1px solid;
-  padding: 3px 9px; font-size: 12px; font-weight: 500; line-height: 16px;
-}
-.fin-pill-good { color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, transparent); border-color: color-mix(in srgb, var(--ok) 30%, transparent); }
-.fin-pill-warn { color: var(--board-amber-ink); background: color-mix(in srgb, var(--board-amber) 14%, transparent); border-color: color-mix(in srgb, var(--board-amber) 35%, transparent); }
-.fin-pill-bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 9%, transparent); border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
-.fin-pill-muted { color: var(--muted); background: var(--hover); border-color: var(--line); }
-/* Progress bar: used part solid with faint stripes, the rest light stripes. */
-.fin-stripe { background: repeating-linear-gradient(135deg, var(--accent) 0 7px, color-mix(in srgb, var(--accent) 82%, white) 7px 10px); }
-.fin-stripe-bad { background: repeating-linear-gradient(135deg, var(--danger) 0 7px, color-mix(in srgb, var(--danger) 80%, white) 7px 10px); }
-.fin-stripe-light { background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--accent) 30%, transparent) 0 2px, transparent 2px 9px); }
-/* The dark "Avg …" tag on the chart's average line. */
-.fin-avg {
-  border-radius: 6px 0 0 6px; background: var(--text); color: var(--bg); padding: 2px 12px 2px 8px;
-  font-size: 11px; font-weight: 500; clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%);
-}
+/* Charts: hairline grid, labels in muted text with lining figures. */
+.fin-chart text { font-family: var(--font-body); font-size: 11px; fill: var(--text-muted); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+.fin-chart .fin-bar { transition: opacity 0.15s; }
 
 /* ---- Notes ---------------------------------------------------------------------
    Transforms use "backwards" fill (see fn-rise) so nothing is left on the editor card. */
@@ -577,8 +618,8 @@ kbd {
 
 /* ---- Privacy Policy / Terms of Service ---------------------------------------- */
 .legal { line-height: 1.7; }
-.legal h2 { margin: 2rem 0 0.5rem; font-size: 1.2rem; font-weight: 600; }
-.legal h3 { margin: 1.25rem 0 0.25rem; font-weight: 600; }
+.legal h2 { margin: 2rem 0 0.5rem; font-size: 1.2rem; font-weight: 500; }
+.legal h3 { margin: 1.25rem 0 0.25rem; font-weight: 500; }
 .legal p, .legal ul { margin: 0.5rem 0; }
 .legal ul { list-style: disc; padding-left: 1.25rem; }
 .legal li { margin: 0.25rem 0; }
@@ -588,23 +629,25 @@ kbd {
 
 /* ---- Notes editor ------------------------------------------------------------------ */
 @layer components {
-  /* Toolbar buttons: 40px targets (44px on touch screens). */
+  /* Toolbar buttons: 32px inside the toolbar's pill (radius 18, padding 4, so 14 here);
+     44px on touch screens. Pressed tools take the accent wash. */
   .tb-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 40px;
-    height: 40px;
+    min-width: 32px;
+    height: 32px;
     flex-shrink: 0;
-    border-radius: 10px;
-    color: var(--muted);
-    transition: background 0.12s, color 0.12s;
+    border-radius: 14px;
+    color: var(--text-secondary);
+    transition: background-color 0.12s, color 0.12s;
   }
-  .tb-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+  .tb-btn:hover:not(:disabled) { background: var(--hover); color: var(--foreground); }
   .tb-btn:disabled { opacity: 0.35; }
+  .tb-btn[aria-pressed="true"], .tb-btn.tb-on, .tb-btn[aria-expanded="true"] { background: var(--accent-subtle); color: var(--foreground); }
 }
 @media (pointer: coarse) {
-  .tb-btn { min-width: 44px; height: 44px; }
+  .tb-btn { min-width: 44px; height: 44px; border-radius: 22px; }
 }
 .note-toolbar { scrollbar-width: none; }
 .note-toolbar::-webkit-scrollbar { display: none; }
@@ -613,7 +656,7 @@ kbd {
   outline: none;
   min-height: 45vh;
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.7;
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -626,24 +669,36 @@ kbd {
   pointer-events: none;
   color: var(--faint);
 }
-.fn-editor h1 { font-size: 1.75em; font-weight: 700; line-height: 1.25; margin-top: 1.1em; letter-spacing: -0.01em; }
-.fn-editor h2 { font-size: 1.4em; font-weight: 700; line-height: 1.3; margin-top: 1em; }
-.fn-editor h3 { font-size: 1.15em; font-weight: 600; line-height: 1.35; margin-top: 0.9em; }
+/* Headings inside a note stay in Inter at weight 500: size does the work. */
+.fn-editor h1 { font-size: 1.625em; font-weight: 500; line-height: 1.25; margin-top: 1.1em; letter-spacing: -0.02em; }
+.fn-editor h2 { font-size: 1.375em; font-weight: 500; line-height: 1.3; margin-top: 1em; letter-spacing: -0.015em; }
+.fn-editor h3 { font-size: 1.125em; font-weight: 500; line-height: 1.4; margin-top: 0.9em; }
 .fn-editor ul:not([data-type="taskList"]) { list-style: disc; padding-left: 1.5em; }
 .fn-editor ol { list-style: decimal; padding-left: 1.6em; }
 .fn-editor li > p { margin: 0; }
 .fn-editor li + li { margin-top: 0.2em; }
 .fn-editor ul[data-type="taskList"] { list-style: none; padding-left: 0.1em; }
 .fn-editor ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 0.6em; }
-.fn-editor ul[data-type="taskList"] li > label { flex-shrink: 0; margin-top: 0.3em; user-select: none; }
-.fn-editor ul[data-type="taskList"] li > label input { width: 1.1em; height: 1.1em; accent-color: var(--accent); cursor: pointer; }
+.fn-editor ul[data-type="taskList"] li > label { flex-shrink: 0; display: flex; margin-top: 0.27em; user-select: none; }
+/* Checklist boxes are round, like tasks on the board. */
+.fn-editor ul[data-type="taskList"] li > label input {
+  appearance: none; display: grid; place-content: center; width: 18px; height: 18px; margin: 0;
+  border-radius: 9999px; border: 1.5px solid var(--border-strong); background: transparent; cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+.fn-editor ul[data-type="taskList"] li > label input:hover { border-color: var(--text-muted); }
+.fn-editor ul[data-type="taskList"] li > label input:checked { background: var(--accent); border-color: var(--accent); }
+.fn-editor ul[data-type="taskList"] li > label input:checked::after {
+  content: ""; width: 5px; height: 9px; border: solid var(--accent-foreground); border-width: 0 2px 2px 0;
+  transform: translateY(-1px) rotate(45deg);
+}
 .fn-editor ul[data-type="taskList"] li > div { flex: 1; min-width: 0; }
-.fn-editor ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--faint); text-decoration: line-through; }
-.fn-editor blockquote { border-left: 3px solid var(--line); padding-left: 1em; color: var(--muted); }
-.fn-editor pre { background: var(--hover); border-radius: 10px; padding: 0.8em 1em; font-size: 0.9em; overflow-x: auto; }
+.fn-editor ul[data-type="taskList"] li[data-checked="true"] > div { color: var(--text-muted); text-decoration: line-through; }
+.fn-editor blockquote { border-left: 2px solid var(--border-strong); padding-left: 1em; color: var(--text-secondary); }
+.fn-editor pre { background: var(--surface-muted); border-radius: 14px; padding: 0.8em 1em; font-size: 0.9em; overflow-x: auto; }
 .fn-editor code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.9em; }
-.fn-editor :not(pre) > code { background: var(--hover); border-radius: 5px; padding: 0.1em 0.35em; }
-.fn-editor hr { border: 0; border-top: 1px solid var(--line); margin: 1.4em 0; }
+.fn-editor :not(pre) > code { background: var(--surface-muted); border-radius: 6px; padding: 0.1em 0.35em; }
+.fn-editor hr { border: 0; border-top: 1px solid var(--border); margin: 1.4em 0; }
 .fn-editor a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 /* The highlight extension writes color:inherit inline; highlights are always light, so force dark text. */
 .fn-editor mark { border-radius: 3px; padding: 0 0.1em; color: #1f1f1f !important; }
@@ -669,3 +724,214 @@ kbd {
 /* …but text inside a (light) highlight stays dark and readable. */
 :root[data-theme="dark"] .fn-editor mark [style*="color:"] { color: #1f1f1f !important; }
 .fn-editor ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+
+/* ---- Component kit (after Arc) ---------------------------------------------------
+   Plain classes so every screen draws the same controls. In the components layer, so
+   a utility on the same element (h-11, w-full…) still wins. Weights stay at 400 and 500. */
+@layer components {
+  /* Buttons: one primary per surface; secondary and plain for the rest. */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s, transform 0.12s;
+  }
+  .btn:active:not(:disabled):not([aria-disabled="true"]) { transform: scale(0.97); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: 0.45; cursor: default; }
+  .btn-sm { height: 32px; padding: 0 12px; gap: 6px; font-size: 13px; }
+  .btn-lg { height: 44px; padding: 0 20px; font-size: 15px; }
+  .btn-icon { width: 36px; padding: 0; }
+  .btn-sm.btn-icon { width: 32px; }
+  .btn-lg.btn-icon { width: 44px; }
+  .btn-primary { background: var(--accent); color: var(--accent-foreground); }
+  .btn-primary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--accent-strong); }
+  .btn-secondary { background: var(--surface); color: var(--foreground); border-color: var(--border); }
+  .btn-secondary:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--surface-muted); }
+  .btn-plain { background: transparent; color: var(--text-secondary); font-weight: 400; }
+  .btn-plain:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--hover); color: var(--foreground); }
+  .btn-danger { background: transparent; color: var(--danger); }
+  .btn-danger:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--danger-subtle); }
+  .btn-danger-solid { background: var(--danger); color: #fff; }
+  /* The send button: muted until there is something to send. */
+  .btn-muted { background: var(--surface-muted); color: var(--text-muted); }
+
+  /* Fields */
+  .field {
+    width: 100%;
+    height: 36px;
+    padding: 0 14px;
+    border-radius: var(--radius-control);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--foreground);
+    outline: none;
+    transition: border-color 0.15s, background-color 0.15s;
+  }
+  .field::placeholder { color: var(--text-muted); }
+  .field:hover { border-color: var(--border-strong); }
+  .field:focus { border-color: var(--border-strong); }
+  .field[aria-invalid="true"] { border-color: var(--danger); }
+  textarea.field { height: auto; padding: 10px 14px; border-radius: 14px; line-height: 1.5; }
+  select.field { padding-right: 32px; }
+  .field-lg { height: 44px; border-radius: 22px; padding: 0 16px; }
+
+  /* Segmented control: a track with the chosen segment raised. */
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--radius-control);
+    background: var(--surface-muted);
+  }
+  .seg > button, .seg > a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border-radius: 15px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  .seg > button:hover, .seg > a:hover { color: var(--foreground); }
+  .seg > [aria-selected="true"], .seg > [aria-checked="true"], .seg > [aria-pressed="true"], .seg > [aria-current="page"] {
+    background: var(--surface);
+    color: var(--foreground);
+    font-weight: 500;
+    box-shadow: 0 1px 2px oklch(0% 0 0 / 0.06);
+  }
+  :root[data-theme="dark"] .seg > [aria-selected="true"],
+  :root[data-theme="dark"] .seg > [aria-checked="true"],
+  :root[data-theme="dark"] .seg > [aria-pressed="true"],
+  :root[data-theme="dark"] .seg > [aria-current="page"] { background: var(--surface-raised); }
+
+  /* Surfaces: cards rest on a border, never a shadow. Floating layers get --shadow-floating. */
+  .card { border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); }
+  .floating { border: 1px solid var(--border); border-radius: var(--radius-panel); background: var(--surface); box-shadow: var(--shadow-floating); }
+
+  /* Badges: neutral for labels; the tones only for status, always with words. */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 22px;
+    padding: 0 8px;
+    border-radius: 9999px;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+  }
+  .badge-info { background: var(--accent-subtle); color: var(--accent); font-weight: 500; }
+  .badge-success { background: var(--success-subtle); color: var(--success); font-weight: 500; }
+  .badge-warning { background: var(--warning-subtle); color: var(--warning); font-weight: 500; }
+  .badge-danger { background: var(--danger-subtle); color: var(--danger); font-weight: 500; }
+  .badge-dot::before { content: ""; width: 6px; height: 6px; border-radius: 9999px; background: currentColor; flex-shrink: 0; }
+
+  /* Filter chips and suggestion pills. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding: 0 14px 0 12px;
+    border-radius: 9999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    white-space: nowrap;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .pill:hover { background: var(--hover); color: var(--foreground); }
+  .pill-sm { height: 32px; padding: 0 12px; font-size: 13px; }
+  .pill[aria-pressed="true"], .pill[aria-checked="true"], .pill[aria-selected="true"] {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+    color: var(--foreground);
+    font-weight: 500;
+  }
+
+  /* Navigation rows (sidebar, settings, lists of places). */
+  .nav-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 18px;
+    color: var(--text-secondary);
+    transition: background-color 0.15s, color 0.15s;
+  }
+  .nav-row:hover { background: var(--hover); color: var(--foreground); }
+  .nav-row[aria-current="page"], .nav-row[aria-current="true"], .nav-row[aria-selected="true"] {
+    background: var(--accent-subtle);
+    color: var(--foreground);
+    font-weight: 500;
+  }
+  .nav-row[aria-current="page"] > svg:first-child, .nav-row[aria-current="true"] > svg:first-child { color: var(--accent); }
+
+  /* Meter (budgets, allowance): a track and a fill. */
+  .meter { height: 6px; border-radius: 9999px; background: var(--control-track); overflow: hidden; }
+  .meter > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+  .meter[data-tone="danger"] > span { background: var(--danger); }
+  .meter[data-tone="warning"] > span { background: var(--warning); }
+
+  /* Switch */
+  .switch {
+    position: relative;
+    width: 44px;
+    height: 26px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    background: var(--control-track);
+    transition: background-color 0.2s;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    background: #fff;
+    box-shadow: 0 0 0 0.5px oklch(0% 0 0 / 0.07), 0 1px 2px oklch(0% 0 0 / 0.14), 0 2px 6px oklch(0% 0 0 / 0.06);
+    transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .switch[aria-checked="true"] { background: var(--accent); }
+  .switch[aria-checked="true"]::after { transform: translateX(18px); }
+  :root[data-theme="dark"] .switch[aria-checked="true"]::after { background: var(--accent-foreground); }
+
+  /* Round checkbox for tasks. */
+  .check {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    border-radius: 9999px;
+    border: 1.5px solid var(--border-strong);
+    color: var(--accent-foreground);
+    transition: background-color 0.15s, border-color 0.15s;
+  }
+  .check:hover { border-color: var(--text-muted); }
+  .check[aria-checked="true"] { background: var(--accent); border-color: var(--accent); }
+
+  /* Small grey group label above a list (never uppercase). */
+  .group-label { font-size: 12px; color: var(--text-muted); }
+}

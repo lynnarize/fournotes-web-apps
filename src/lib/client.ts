@@ -14,13 +14,17 @@ const offlineGuard = () => {
 };
 
 export const api = {
-  /** `tools: false` asks for an answer only: nothing can be filed. */
-  chat: async (messages: ChatMessage[], context: ClientContext, opts?: { tools?: boolean }) => {
+  /**
+   * `tools: false` asks for an answer only: nothing can be filed.
+   * `signal` stops waiting for the reply (the Stop button); the request then rejects with an AbortError.
+   */
+  chat: async (messages: ChatMessage[], context: ClientContext, opts?: { tools?: boolean; signal?: AbortSignal }) => {
     offlineGuard();
     return fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({ messages, context, tools: opts?.tools !== false }),
+      signal: opts?.signal,
     }).then((r) => asJson<ChatResponse>(r));
   },
 

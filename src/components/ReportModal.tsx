@@ -70,66 +70,70 @@ export default function ReportModal({ open, onClose }: { open: boolean; onClose:
       "text/csv;charset=utf-8",
     );
 
+  // The short colour names (--muted, --faint, --line) are the ones the print stylesheet resets to paper colours.
   const report = (
     <div className="report text-sm">
-      <h1 className="text-2xl font-bold">Four Notes · {year} financial report</h1>
-      <p className="mb-4 text-[var(--muted)]">{spaceName} · amounts in {cur} · generated {new Date().toLocaleDateString("en-US", { dateStyle: "medium" })}</p>
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <div><div className="text-xs text-[var(--muted)]">Spent (your share)</div><div className="text-lg font-semibold">{formatMoney(data.spent, cur)}</div></div>
-        <div><div className="text-xs text-[var(--muted)]">Income</div><div className="text-lg font-semibold">{formatMoney(data.earned, cur)}</div></div>
-        <div><div className="text-xs text-[var(--muted)]">Net</div><div className="text-lg font-semibold">{formatMoney(data.earned - data.spent, cur)}</div></div>
+      <h1 className="text-2xl font-medium tracking-[-0.02em]">Four Notes, {year} financial report</h1>
+      <p className="mb-5 mt-1 text-[var(--muted)]">{spaceName}, amounts in {cur}, made {new Date().toLocaleDateString("en-US", { dateStyle: "medium" })}</p>
+      <div className="mb-5 grid grid-cols-3 overflow-hidden rounded-[var(--radius-control)] border border-[var(--line)]">
+        {[["Spent (your share)", data.spent], ["Income", data.earned], ["Net", data.earned - data.spent]].map(([label, value], i) => (
+          <div key={label} className={`flex min-w-0 flex-col gap-1 px-4 py-3 ${i ? "border-l border-[var(--line)]" : ""}`}>
+            <span className="text-xs text-[var(--faint)]">{label}</span>
+            <span className="fn-num truncate text-lg font-medium">{formatMoney(value as number, cur)}</span>
+          </div>
+        ))}
       </div>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-xs tabular-nums">
+        <table className="fn-num w-full border-collapse text-xs">
           <thead>
-            <tr className="border-b border-[var(--line)] text-left">
-              <th className="py-1 pr-2">Category</th>
-              {MONTHS.map((m) => <th key={m} className="px-1 py-1 text-right">{monthName(m)}</th>)}
-              <th className="py-1 pl-2 text-right">Total</th>
+            <tr className="border-b border-[var(--line)] text-left text-[var(--faint)]">
+              <th scope="col" className="py-2 pr-2 font-normal">Category</th>
+              {MONTHS.map((m) => <th key={m} scope="col" className="px-1 py-2 text-right font-normal">{monthName(m)}</th>)}
+              <th scope="col" className="py-2 pl-2 text-right font-normal">Total</th>
             </tr>
           </thead>
           <tbody>
             {data.usedCats.map((c) => (
               <tr key={c} className="border-b border-[var(--line)]">
-                <td className="py-1 pr-2">{c}</td>
-                {MONTHS.map((m) => <td key={m} className="px-1 py-1 text-right">{data.grid[m][c] ? formatMoney(data.grid[m][c], cur, true) : ""}</td>)}
-                <td className="py-1 pl-2 text-right font-medium">{formatMoney(data.catTotal[c], cur, true)}</td>
+                <th scope="row" className="py-1.5 pr-2 text-left font-normal">{c}</th>
+                {MONTHS.map((m) => <td key={m} className="px-1 py-1.5 text-right">{data.grid[m][c] ? formatMoney(data.grid[m][c], cur, true) : ""}</td>)}
+                <td className="py-1.5 pl-2 text-right font-medium">{formatMoney(data.catTotal[c], cur, true)}</td>
               </tr>
             ))}
-            <tr className="border-b border-[var(--line)] font-semibold">
-              <td className="py-1 pr-2">Total spent</td>
-              {MONTHS.map((m) => <td key={m} className="px-1 py-1 text-right">{data.monthSpend[m] ? formatMoney(data.monthSpend[m], cur, true) : ""}</td>)}
-              <td className="py-1 pl-2 text-right">{formatMoney(data.spent, cur, true)}</td>
+            <tr className="border-b border-[var(--line)] font-medium">
+              <th scope="row" className="py-1.5 pr-2 text-left font-medium">Total spent</th>
+              {MONTHS.map((m) => <td key={m} className="px-1 py-1.5 text-right">{data.monthSpend[m] ? formatMoney(data.monthSpend[m], cur, true) : ""}</td>)}
+              <td className="py-1.5 pl-2 text-right">{formatMoney(data.spent, cur, true)}</td>
             </tr>
             <tr>
-              <td className="py-1 pr-2">Income</td>
-              {MONTHS.map((m) => <td key={m} className="px-1 py-1 text-right">{data.income[m] ? formatMoney(data.income[m], cur, true) : ""}</td>)}
-              <td className="py-1 pl-2 text-right">{formatMoney(data.earned, cur, true)}</td>
+              <th scope="row" className="py-1.5 pr-2 text-left font-normal">Income</th>
+              {MONTHS.map((m) => <td key={m} className="px-1 py-1.5 text-right">{data.income[m] ? formatMoney(data.income[m], cur, true) : ""}</td>)}
+              <td className="py-1.5 pl-2 text-right">{formatMoney(data.earned, cur, true)}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p className="mt-4 text-xs text-[var(--faint)]">{data.txs.length} transactions. Shares of split bills paid by others are excluded from spending.</p>
+      <p className="mt-4 text-xs text-[var(--faint)]">{data.txs.length} transactions. Shares of split bills paid by others are left out of spending.</p>
     </div>
   );
 
   return (
     <>
       <Modal open={open} onClose={onClose} title="Annual report" wide>
-        <div className="space-y-4 p-4">
+        <div className="space-y-5 p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <select value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year" className="rounded border border-[var(--line)] bg-transparent px-2 py-1 text-sm">
+            <select value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year" className="field fn-num w-auto max-md:h-11">
               {years.map((y) => <option key={y}>{y}</option>)}
             </select>
             <div className="ml-auto flex flex-wrap gap-2">
-              <button className="btn-ghost flex items-center gap-1 border border-[var(--line)] text-sm" onClick={exportTransactions} disabled={!data.txs.length}>
+              <button className="btn btn-secondary btn-sm max-md:h-11" onClick={exportTransactions} disabled={!data.txs.length}>
                 <Icon name="download" size={14} /> Transactions (Excel CSV)
               </button>
-              <button className="btn-ghost flex items-center gap-1 border border-[var(--line)] text-sm" onClick={exportSummary} disabled={!data.txs.length}>
+              <button className="btn btn-secondary btn-sm max-md:h-11" onClick={exportSummary} disabled={!data.txs.length}>
                 <Icon name="download" size={14} /> Summary (Excel CSV)
               </button>
-              <button className="flex items-center gap-1 rounded-md bg-[var(--text)] px-3 py-1 text-sm text-[var(--bg)] disabled:opacity-30" onClick={() => window.print()} disabled={!data.txs.length}>
-                Print / Save as PDF
+              <button className="btn btn-primary btn-sm max-md:h-11" onClick={() => window.print()} disabled={!data.txs.length}>
+                <Icon name="print" size={14} /> Print or save as PDF
               </button>
             </div>
           </div>

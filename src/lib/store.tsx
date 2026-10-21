@@ -16,6 +16,7 @@ import { nextAfterCompleting } from "./recurrence";
 import { buildSamples, SAMPLE_BUDGETS } from "./sample";
 import type {
   AIAction,
+  AnswerSource,
   ClientContext,
   DailyBrief,
   ExpenseCategory,
@@ -160,7 +161,8 @@ type Ctx = AppData & {
   /** Merge rows pulled from the cloud; newer updatedAt wins. Does not bump timestamps. */
   mergeRemote(kind: ListKind, rows: BaseRow[]): void;
   applyActions(actions: AIAction[], extra?: { imageDataUrl?: string; source?: Note["source"] }): ApplyResult;
-  buildContext(relevantNotes?: Note[]): ClientContext;
+  /** `sources`: the numbered items a question's answer may cite as [n] (see answerSources in search.ts). */
+  buildContext(relevantNotes?: Note[], sources?: AnswerSource[]): ClientContext;
 };
 type BaseRow = Note | Todo | Transaction | Sticky;
 
@@ -475,7 +477,7 @@ export function StoreProvider({ children, adapter = localAdapter }: { children: 
         return { filed, links, transactionIds, created };
       },
 
-      buildContext(relevantNotes?: Note[]): ClientContext {
+      buildContext(relevantNotes?: Note[], sources?: AnswerSource[]): ClientContext {
         const d = dataRef.current;
         const live = <T extends { deletedAt?: string | null; spaceId?: string | null }>(xs: T[]) =>
           xs.filter((x) => !x.deletedAt && (x.spaceId ?? null) === d.currentSpaceId);
@@ -489,6 +491,8 @@ export function StoreProvider({ children, adapter = localAdapter }: { children: 
           transactions: live(d.transactions).slice(0, 80).map((t) => ({ merchant: t.merchant, amount: t.amount, category: t.category, date: t.date })),
           budgets: d.settings.budgets,
           categories: categoriesOf(d.settings),
+          // Only what the model reads: ids and dates stay in the browser.
+          sources: sources?.length ? sources.map(({ n, kind, title, detail }) => ({ n, kind, title, detail })) : undefined,
         };
       },
     };

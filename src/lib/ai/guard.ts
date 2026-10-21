@@ -8,7 +8,7 @@ import "server-only";
 //              helps with malware, fraud or harm.
 // Demo mode calls no model and needs neither.
 import { answerOnly } from "../intent";
-import type { ChatMessage, ClientContext } from "../types";
+import { SOURCE_KINDS, type ChatMessage, type ClientContext, type SourceKind } from "../types";
 
 export type Scope = "shared" | "own";
 
@@ -59,6 +59,30 @@ export class GuardError extends Error {
 
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "");
 
+/** Most numbered sources one answer gets (the browser picks at most this many too). */
+export const MAX_SOURCES = 8;
+
+/**
+ * The numbered sources sent with a question: known kinds only, numbers 1…MAX_SOURCES and
+ * each number once, short text. They are client-supplied, so they are data like the rest.
+ */
+function cleanSources(v: unknown): ClientContext["sources"] {
+  if (!Array.isArray(v)) return undefined;
+  const seen = new Set<number>();
+  const out: NonNullable<ClientContext["sources"]> = [];
+  for (const s of v.slice(0, MAX_SOURCES * 2) as { n?: unknown; kind?: unknown; title?: unknown; detail?: unknown }[]) {
+    const n = s?.n;
+    if (typeof n !== "number" || !Number.isInteger(n) || n < 1 || n > MAX_SOURCES || seen.has(n)) continue;
+    if (!SOURCE_KINDS.includes(s.kind as SourceKind)) continue;
+    const title = str(s.title, 160).trim();
+    if (!title) continue;
+    seen.add(n);
+    out.push({ n, kind: s.kind as SourceKind, title, detail: str(s.detail, 400) });
+    if (out.length >= MAX_SOURCES) break;
+  }
+  return out.length ? out : undefined;
+}
+
 /**
  * Validates and trims a chat request from the browser. Roles are whitelisted (no
  * "system" smuggled in), history and message sizes are capped, and the data
@@ -93,6 +117,7 @@ export function sanitizeChat(messages: unknown, context: unknown, scope: Scope):
     transactions: Array.isArray(ctx.transactions) ? ctx.transactions.slice(0, 300) : [],
     budgets: ctx.budgets && typeof ctx.budgets === "object" ? ctx.budgets : {},
     categories: Array.isArray(ctx.categories) ? ctx.categories.filter((c) => typeof c === "string").slice(0, 40) : [],
+    sources: cleanSources(ctx.sources),
   };
   if (JSON.stringify(safe).length > lim.contextChars) {
     throw new GuardError("Too much data was sent with this message. Try a shorter question.", 413);
@@ -148,7 +173,7 @@ const words = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}]+/u).filt
 /** Distinctive words from the user's own titles, merchants and categories. */
 const dataTerms = (ctx: ClientContext) =>
   new Set(words([...ctx.notes.map((n) => n.title), ...(ctx.relevantNotes ?? []).map((n) => n.title), ...ctx.todos.map((t) => t.title),
-    ...ctx.transactions.map((t) => `${t.merchant} ${t.category}`), ...(ctx.categories ?? [])].join(" ")));
+    ...ctx.transactions.map((t) => `${t.merchant} ${t.category}`), ...(ctx.categories ?? []), ...(ctx.sources ?? []).map((s) => s.title)].join(" ")));
 
 /**
  * Shared key: a question that isn't about the user's own data (the capital of France,

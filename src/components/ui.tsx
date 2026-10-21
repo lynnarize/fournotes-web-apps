@@ -25,13 +25,15 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           <div
             key={t.id}
             role="status"
-            className="fn-toast pointer-events-auto flex items-start gap-3 whitespace-pre-line rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3 py-2 text-sm shadow-[var(--shadow)]"
-            style={{ borderLeft: `3px solid ${t.tone === "error" ? "var(--danger)" : "var(--ok)"}` }}
+            className="fn-toast floating pointer-events-auto flex items-start gap-3 whitespace-pre-line rounded-[22px] py-2.5 pl-4 pr-2.5 text-sm"
           >
-            <span className="flex-1">{t.text}</span>
+            <span className={`mt-px shrink-0 ${t.tone === "error" ? "text-[var(--danger)]" : "text-[var(--success)]"}`}>
+              <Icon name={t.tone === "error" ? "warning" : "check"} size={18} />
+            </span>
+            <span className={`min-w-0 flex-1 py-px ${t.action ? "" : "pr-1.5"}`}>{t.text}</span>
             {t.action && (
               <button
-                className="shrink-0 font-medium text-[var(--accent)]"
+                className="btn btn-sm -my-1 bg-[var(--surface-muted)] text-[var(--foreground)] hover:bg-[var(--hover)]"
                 onClick={() => { t.action!.run(); setToasts((xs) => xs.filter((x) => x.id !== t.id)); }}
               >
                 {t.action.label}
@@ -73,13 +75,13 @@ export function Modal({ open, onClose, title, children, wide = false, actions }:
         aria-modal
         aria-label={title}
         data-state={state}
-        className={`fn-sheet sm-dialog scroll-thin relative max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl border border-[var(--line)] bg-[var(--bg)] pb-[env(safe-area-inset-bottom)] shadow-[var(--shadow)] sm:max-h-[80vh] sm:rounded-xl sm:pb-0 ${wide ? "max-w-3xl" : "max-w-lg"}`}
+        className={`fn-sheet sm-dialog scroll-thin relative max-h-[92dvh] w-full overflow-y-auto rounded-t-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)] pb-[env(safe-area-inset-bottom)] shadow-[var(--shadow-floating)] sm:max-h-[80vh] sm:rounded-[var(--radius-panel)] sm:pb-0 ${wide ? "max-w-3xl" : "max-w-lg"}`}
       >
         {title && (
-          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--line)] bg-[var(--bg)] py-1.5 pl-4 pr-1.5 sm:py-1">
-            <h2 className="min-w-0 flex-1 truncate font-semibold">{title}</h2>
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface)] py-2 pl-5 pr-2">
+            <h2 className="min-w-0 flex-1 truncate text-[15px] font-medium">{title}</h2>
             {actions}
-            <button className="tap-target sm:h-9 sm:w-9" onClick={onClose} aria-label="Close"><Icon name="x" size={20} /></button>
+            <button className="btn btn-plain btn-icon" onClick={onClose} aria-label="Close"><Icon name="x" size={18} /></button>
           </div>
         )}
         {children}

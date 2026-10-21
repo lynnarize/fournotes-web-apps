@@ -1,5 +1,5 @@
 import "server-only";
-import { formatMoney, parseAmount } from "../money";
+import { parseAmount } from "../money";
 import { guessCategory, parseWalletNotification } from "../wallet";
 import type { AIAction, BriefInput, CaptureResult, ChatMessage, ChatResponse, ClientContext, ExpenseCategory, Transaction } from "../types";
 import { EXPENSE_CATEGORIES } from "../types";
@@ -9,7 +9,7 @@ import { OWN_KEY_REQUIRED } from "./guard";
 import type { LLMProvider } from "./provider";
 
 // Rule-based stand-in used when no API key is set, so the UI is testable offline.
-const DEMO = " (demo mode — add a free OpenRouter key in Settings for real AI)";
+const DEMO = " (demo mode: add a free OpenRouter key in Settings for real AI)";
 
 function parseWhen(s: string, now: Date): string | null {
   const d = new Date(now);

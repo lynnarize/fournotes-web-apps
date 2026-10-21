@@ -28,6 +28,8 @@ const GATEWAY_NAME: Record<Gateway, string> = { openrouter: "OpenRouter", openco
 type ToolCall = { id: string; type?: string; function: { name: string; arguments: string } };
 type ResponseMessage = { content?: string | null; tool_calls?: ToolCall[] };
 type Completion = {
+  /** The model that answered: with fallbacks (or the free router), not always the one asked for. */
+  model?: string;
   choices?: { message?: ResponseMessage; finish_reason?: string }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string; code?: number; metadata?: { raw?: string; limit_source?: string } };
@@ -234,7 +236,7 @@ export class OpenRouterProvider implements LLMProvider {
       }
       throw new ProviderError(detail || `OpenRouter request failed (${status})`, status);
     }
-    const used = (json as { model?: string }).model ?? body.model;
+    const used = json.model ?? body.model;
     console.info(`[ai:${this.gateway}] model=${used} in=${json.usage?.prompt_tokens ?? "?"} out=${json.usage?.completion_tokens ?? "?"}`);
     return json;
   }
@@ -279,7 +281,7 @@ export class OpenRouterProvider implements LLMProvider {
     const unusable = !out.reply || looksLikePlanning(out.reply) || looksLikeThinking(out.reply) || CLASSIFIER.test(out.reply);
     if (unusable && out.reply) console.warn(`[ai:openrouter] unusable chat reply: ${out.reply.slice(0, 80).replace(/\s+/g, " ")}`);
     const reply = !unusable ? out.reply : actions.length ? describeActions(actions) : tools && out.reply ? COULD_NOT_ACT : COULD_NOT_ANSWER;
-    return { reply, actions };
+    return { reply, actions, model: out.model };
   }
 
   /** `firstChoice` null: no tools at all. `restricted` (shared key): fewer turns and a smaller output budget per call. */
@@ -289,6 +291,7 @@ export class OpenRouterProvider implements LLMProvider {
     let reply = "";
 
     const seen = new Set<string>();
+    let model = this.model;
     for (let turn = 0; turn < (restricted ? 2 : 3); turn++) {
       const res = await this.complete({
         model: this.model,
@@ -299,6 +302,7 @@ export class OpenRouterProvider implements LLMProvider {
         ...(firstChoice ? { tools: toOpenAiTools(ACTION_TOOLS), tool_choice: turn === 0 ? firstChoice : "auto" } : {}),
       });
       const message = res.choices?.[0]?.message;
+      if (res.model) model = res.model;
       const text = cleanText(message?.content ?? "");
       if (text) reply += (reply ? "\n" : "") + text;
 
@@ -321,7 +325,7 @@ export class OpenRouterProvider implements LLMProvider {
       for (const call of calls) messages.push({ role: "tool", tool_call_id: call.id, content: "saved" });
     }
 
-    return { reply: reply.trim(), raw };
+    return { reply: reply.trim(), raw, model };
   }
 
   /** Forced tool use where supported; falls back to asking for plain JSON. */

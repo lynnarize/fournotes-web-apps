@@ -37,18 +37,23 @@ export default function CategoryEditor() {
 
   return (
     <div className="space-y-3 text-sm">
-      <p className="text-xs leading-relaxed text-[var(--muted)]">
+      <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
         Categories are used for spending, budgets and reports. The built-in ones can&apos;t be removed; your own can.
       </p>
 
-      <ul className="flex flex-wrap gap-2">
+      <ul className="flex flex-wrap gap-1.5">
         {categories.map((c) => (
-          <li key={c} className={`chip ${builtIn.has(c) ? "" : "pr-1"}`}>
+          <li key={c} className={`inline-flex h-8 items-center gap-1.5 rounded-full bg-[var(--surface-muted)] text-[13px] text-[var(--text-secondary)] ${builtIn.has(c) ? "px-3" : "pl-3 pr-1"}`}>
             {c}
-            {used[c] ? <span className="text-[var(--faint)]">· {used[c]}</span> : null}
+            {used[c] ? <span className="fn-num text-[var(--text-muted)]">{used[c]}</span> : null}
             {!builtIn.has(c) && (
-              <button className="ml-0.5 rounded p-0.5 hover:text-[var(--danger)]" onClick={() => remove(c)} aria-label={`Remove ${c}`}>
-                <Icon name="x" size={11} />
+              <button
+                className="relative grid h-6 w-6 place-items-center rounded-full text-[var(--text-muted)] before:absolute before:-inset-2 hover:bg-[var(--danger-subtle)] hover:text-[var(--danger)]"
+                onClick={() => remove(c)}
+                aria-label={`Remove ${c}`}
+                title="Remove"
+              >
+                <Icon name="x" size={12} />
               </button>
             )}
           </li>
@@ -60,11 +65,11 @@ export default function CategoryEditor() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={40}
-          placeholder="New category (e.g. Pets)"
+          placeholder="New category, like Pets"
           aria-label="New category name"
-          className="h-9 min-w-0 flex-1 rounded-md bg-[var(--hover)] px-2.5 text-[var(--text)] outline-none placeholder:text-[var(--faint)] focus:ring-1 focus:ring-[var(--accent)]"
+          className="field min-w-0 flex-1 max-md:h-11"
         />
-        <button className="h-9 rounded-md border border-[var(--line)] px-4 font-medium hover:bg-[var(--hover)] disabled:opacity-40" disabled={!name.trim()}>
+        <button className="btn btn-secondary max-md:h-11" disabled={!name.trim()}>
           Add
         </button>
       </form>

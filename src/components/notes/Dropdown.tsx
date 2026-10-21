@@ -1,7 +1,8 @@
 "use client";
-// Toolbar menus for the Notes editor. Rendered in a portal with fixed positioning,
-// so they aren't clipped by the toolbar's horizontal scroll on phones, and every
-// control prevents mousedown so the editor keeps its text selection.
+// Toolbar menus for the Notes editor (and the app's other small menus). A floating
+// layer: radius 26 with 6px padding, so its rows are 20. Rendered in a portal with fixed
+// positioning, so they aren't clipped by the toolbar's horizontal scroll on phones, and
+// every control prevents mousedown so the editor keeps its text selection.
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "../ui";
@@ -74,7 +75,7 @@ export function Dropdown({ label, button, children, width = 240, title, classNam
         aria-expanded={open}
         aria-label={label}
         title={title ?? label}
-        className={className ?? `tb-btn gap-1 px-2 ${open ? "bg-[var(--hover)] text-[var(--text)]" : ""}`}
+        className={className ?? `tb-btn gap-1 px-2 ${open ? "tb-on" : ""}`}
       >
         {button}
         {chevron && <Icon name="chevronDown" size={14} className="opacity-60" />}
@@ -86,7 +87,7 @@ export function Dropdown({ label, button, children, width = 240, title, classNam
             role="menu"
             aria-label={label}
             onMouseDown={keep}
-            className="fn-pop scroll-thin fixed z-[80] overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--bg)] p-1.5 text-sm shadow-[var(--shadow)]"
+            className="fn-pop scroll-thin floating fixed z-[80] overflow-y-auto p-1.5 text-sm"
             style={{ top: pos.top, bottom: pos.bottom, left: pos.left, width: Math.min(width, window.innerWidth - 16), maxHeight: pos.maxHeight }}
           >
             {children(close)}
@@ -103,20 +104,26 @@ export function MenuItem({ icon, label, hint, active, danger, onSelect }: {
   return (
     <button
       type="button"
-      role="menuitem"
+      // A choice among several (sort order, font) reads as checked or not.
+      role={active === undefined ? "menuitem" : "menuitemradio"}
+      aria-checked={active === undefined ? undefined : active}
       onMouseDown={keep}
       onClick={onSelect}
-      className={`flex min-h-10 w-full items-center gap-3 rounded-lg px-2.5 text-left hover:bg-[var(--hover)] ${danger ? "text-[var(--danger)]" : ""}`}
+      className={`flex min-h-10 w-full items-center gap-3 rounded-[20px] px-3 text-left transition-colors [@media(pointer:coarse)]:min-h-11 ${
+        danger
+          ? "text-[var(--danger)] hover:bg-[var(--danger-subtle)] focus-visible:bg-[var(--danger-subtle)]"
+          : `hover:bg-[var(--hover)] focus-visible:bg-[var(--hover)] ${active ? "font-medium text-[var(--foreground)]" : ""}`
+      }`}
     >
-      {icon && <Icon name={icon} size={17} className={danger ? "" : "text-[var(--muted)]"} />}
+      {icon && <Icon name={icon} size={17} className={danger ? "shrink-0" : "shrink-0 text-[var(--text-secondary)]"} />}
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      {hint && <span className="shrink-0 text-xs text-[var(--faint)]">{hint}</span>}
+      {hint && <span className="shrink-0 text-xs text-[var(--text-muted)]">{hint}</span>}
       {active && <Icon name="check" size={15} className="shrink-0 text-[var(--accent)]" />}
     </button>
   );
 }
 
-export const MenuSep = () => <div className="my-1 h-px bg-[var(--line)]" role="separator" />;
+export const MenuSep = () => <div className="mx-3 my-1.5 h-px bg-[var(--border-subtle)]" role="separator" />;
 export const MenuLabel = ({ children }: { children: ReactNode }) => (
-  <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-[var(--faint)]">{children}</div>
+  <div className="px-3 pb-1.5 pt-2 text-xs text-[var(--text-muted)]">{children}</div>
 );

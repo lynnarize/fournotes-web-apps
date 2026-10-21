@@ -69,14 +69,14 @@ export class AnthropicProvider implements LLMProvider {
       });
     }
 
-    return { reply: reply.trim() || "Done!", actions: validateActions(raw) };
+    return { reply: reply.trim() || "Done!", actions: validateActions(raw), model: this.model };
   }
 
   async captureImage(base64: string, mediaType: string, ctx: ClientContext): Promise<CaptureResult> {
     const res = await this.client.messages.create({
       model: this.model,
       max_tokens: 2048,
-      system: system({ ...ctx, notes: [], todos: [], transactions: [], relevantNotes: [] }),
+      system: system({ ...ctx, notes: [], todos: [], transactions: [], relevantNotes: [], sources: undefined }),
       tools: [FILE_CAPTURE_TOOL as unknown as Anthropic.Tool],
       tool_choice: { type: "tool", name: FILE_CAPTURE_TOOL.name },
       messages: [
@@ -105,7 +105,7 @@ export class AnthropicProvider implements LLMProvider {
     const res = await this.client.messages.create({
       model: this.model,
       max_tokens: 2048,
-      system: system({ ...ctx, notes: [], todos: [], transactions: [], relevantNotes: [] }),
+      system: system({ ...ctx, notes: [], todos: [], transactions: [], relevantNotes: [], sources: undefined }),
       tools: [FILE_CAPTURE_TOOL as unknown as Anthropic.Tool],
       tool_choice: { type: "tool", name: FILE_CAPTURE_TOOL.name },
       messages: [

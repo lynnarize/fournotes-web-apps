@@ -2,7 +2,7 @@
 // Themes: "system" follows the device; "light", "paper" (warm paper, ink-brown text)
 // and "dark" override it. Stored per device (not synced) and applied via <html data-theme="…">.
 import { useEffect, useState } from "react";
-import { THEME_COLORS, THEME_KEY } from "./theme-script";
+import { ACCENT_KEY, ACCENTS, THEME_COLORS, THEME_KEY } from "./theme-script";
 
 export type ThemePref = "system" | "light" | "paper" | "dark";
 export type ResolvedTheme = "light" | "paper" | "dark";
@@ -62,12 +62,59 @@ if (typeof window !== "undefined") {
     applyTheme("system");
     window.dispatchEvent(new Event(EVT));
   });
-  // Another tab changed the theme.
+  // Another tab changed the theme or the accent.
   window.addEventListener("storage", (e) => {
+    if (e.key === ACCENT_KEY) {
+      applyAccent();
+      window.dispatchEvent(new Event(ACCENT_EVT));
+      return;
+    }
     if (e.key !== THEME_KEY) return;
     applyTheme();
     window.dispatchEvent(new Event(EVT));
   });
+}
+
+// ---- Accent ------------------------------------------------------------------
+// One hue spent on what is selected or active (Settings → Appearance). Stored per device,
+// like the theme, and applied as <html data-accent="…"> before first paint (theme-script.ts).
+
+export type AccentPref = (typeof ACCENTS)[number];
+const ACCENT_EVT = "four-notes:accent-changed";
+
+export function getAccent(): AccentPref {
+  try {
+    const v = localStorage.getItem(ACCENT_KEY);
+    return (ACCENTS as readonly string[]).includes(v ?? "") ? (v as AccentPref) : "neutral";
+  } catch {
+    return "neutral";
+  }
+}
+
+export function applyAccent(accent: AccentPref = getAccent()) {
+  const root = document.documentElement;
+  if (accent === "neutral") delete root.dataset.accent;
+  else root.dataset.accent = accent;
+}
+
+export function setAccent(accent: AccentPref) {
+  try {
+    if (accent === "neutral") localStorage.removeItem(ACCENT_KEY);
+    else localStorage.setItem(ACCENT_KEY, accent);
+  } catch { /* storage blocked: still apply for this session */ }
+  applyAccent(accent);
+  window.dispatchEvent(new Event(ACCENT_EVT));
+}
+
+export function useAccent() {
+  const [accent, setState] = useState<AccentPref>("neutral");
+  useEffect(() => {
+    const update = () => setState(getAccent());
+    update();
+    window.addEventListener(ACCENT_EVT, update);
+    return () => window.removeEventListener(ACCENT_EVT, update);
+  }, []);
+  return { accent, setAccent };
 }
 
 export function useTheme() {

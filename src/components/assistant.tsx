@@ -2,17 +2,22 @@
 // Assistant state shared by the chat dock, sidebar and command palette:
 // chat (with retrieval over your notes), photo OCR auto-sorting, voice recording
 // -> summarized note, hands-free voice mode, and an offline outbox.
+// A question is answered from numbered sources picked from your own data, and the
+// answer cites them as [n] (see answerSources in lib/search.ts and assistant/cite.ts).
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { serverStatus, type ServerStatus } from "@/lib/aiRoute";
 import { getUserKeys, isValidKey } from "@/lib/byok";
 import { api, resizeImage } from "@/lib/client";
 import { markFiled, pulseTabs } from "@/lib/highlight";
 import { openSettings } from "@/lib/nav";
-import { semanticNotes } from "@/lib/search";
+import { answerSources, semanticNotes } from "@/lib/search";
 import { activeNoteId } from "@/lib/activeNote";
 import { agrees, answerOnly, groundAmounts, isQuestion, noteQuestion, savesPreviousReply } from "@/lib/intent";
 import { isWorthSaving, noteContentFromReply, offersToSave, replyNoteTitle } from "@/lib/replyNote";
-import { useStore, type ChangeLink } from "@/lib/store";
-import type { AIAction, ChatMessage, Note, NoteSource, Tab } from "@/lib/types";
+import { useStore, type ChangeLink, type ListKind } from "@/lib/store";
+import type { AIAction, AnswerSource, ChatMessage, Note, NoteSource, Tab } from "@/lib/types";
+import { citations, renumbered, sourcesText, withoutCitations } from "./assistant/cite";
+import { choiceName, modelDisplayName, pickedModel } from "./ModelMenu";
 import { useToast } from "./ui";
 
 export type UIMessage = ChatMessage & {
@@ -20,37 +25,70 @@ export type UIMessage = ChatMessage & {
   filed?: string[];
   /** Same order as `filed`: where each item landed, for "Show" buttons. */
   links?: ChangeLink[];
+  /** What this reply created (not what it changed): Undo removes these. */
+  newItems?: { kind: ListKind; id: string }[];
+  /** Undo was used: the created items are gone. */
+  undone?: boolean;
   imageUrl?: string;
   error?: boolean;
   queued?: boolean;
+  /** The user stopped waiting for this reply. */
+  stopped?: boolean;
   splitTxId?: string; // receipt just filed -> offer "split this bill"
   /** The user message this reply answers: titles the reply when it's saved as a note. */
   questionId?: string;
+  /** On a user message sent as text: what to send again for Retry. */
+  retryText?: string;
   /** Saved to Notes already, so "Save as note" isn't offered again. */
   savedAsNote?: boolean;
+  /** On the "Saved it to Notes" message: the reply it saved, so Undo can offer saving again. */
+  savedFrom?: string;
   /** A refusal from the server's guard: not offered as a note. */
   refused?: boolean;
   /** A reply about one of the user's notes: offers to look further on the web. */
   webTopic?: WebTopic;
   /** The pages a web answer drew on. */
   sources?: { title: string; url: string }[];
+  /** The numbered items from the user's own data the answer could cite as [n]. */
+  dataSources?: AnswerSource[];
+  /** Which model wrote the reply, as the server reported it (or the one asked, when it doesn't say). */
+  model?: string;
+  /** How long the reply took to arrive, measured here, in milliseconds. */
+  ms?: number;
+  /** Written by the rule-based stand-in, not a model. */
+  demo?: boolean;
 };
 /** The note a question was about, and what was asked of it. */
 export type WebTopic = { noteId: string; noteTitle: string; question: string };
 
 /** A reply worth keeping: long, and not itself a record of what was filed. */
 export const canSaveAsNote = (m: UIMessage) =>
-  m.role === "assistant" && !m.error && !m.refused && !m.savedAsNote && !m.filed?.length && isWorthSaving(m.content);
+  m.role === "assistant" && !m.error && !m.refused && !m.stopped && !m.savedAsNote && !m.filed?.length && isWorthSaving(withoutCitations(m.content));
+
+/** Retry is offered on the last reply, when it filed nothing and answers something typed. */
+export function canRetry(messages: UIMessage[], m: UIMessage) {
+  if (m.role !== "assistant" || m.filed?.length || !m.questionId) return false;
+  const last = [...messages].reverse().find((x) => x.role === "assistant");
+  return last?.id === m.id && Boolean(messages.find((x) => x.id === m.questionId)?.retryText);
+}
 export type VoiceState = "off" | "listening" | "thinking" | "speaking";
 
 type Ctx = {
   messages: UIMessage[];
   busy: string | null; // label of the running job
+  /** The running job is a chat reply, which Stop can cancel. */
+  canStop: boolean;
   recording: boolean;
   liveTranscript: string;
   voice: VoiceState;
   queued: number;
   send(text: string): Promise<string | null>;
+  /** Stop waiting for the reply being written. */
+  stop(): void;
+  /** Ask the question behind this reply again (the last reply only). */
+  retry(replyId: string): void;
+  /** Remove what this reply created. */
+  undo(replyId: string): void;
   scan(file: Blob, source?: NoteSource): Promise<void>;
   startRecording(): Promise<void>;
   stopRecording(): void;
@@ -77,12 +115,12 @@ const tabFor = (actions: AIAction[]): Tab | null => {
 };
 
 // Minimal typing for the Web Speech API (not in TS DOM lib everywhere).
-type SpeechRec = {
+export type SpeechRec = {
   lang: string; continuous: boolean; interimResults: boolean;
   onresult: (e: { resultIndex: number; results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void;
   onerror: (e: { error?: string }) => void; onend: () => void; start(): void; stop(): void; abort(): void;
 };
-const getSpeechRecognition = () => {
+export const getSpeechRecognition = () => {
   const W = window as unknown as { SpeechRecognition?: new () => SpeechRec; webkitSpeechRecognition?: new () => SpeechRec };
   return W.SpeechRecognition ?? W.webkitSpeechRecognition;
 };
@@ -103,7 +141,7 @@ const NO_STT =
 const NO_BROWSER_SPEECH = "Voice mode uses your browser's speech recognition, which this browser doesn't have. Try Chrome, Edge or Safari.";
 
 /** Browser speech errors that mean it will never work here (others, like "no-speech", are normal). */
-function speechErrorMessage(code?: string): string | null {
+export function speechErrorMessage(code?: string): string | null {
   switch (code) {
     case "not-allowed":
     case "audio-capture":
@@ -156,21 +194,37 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   const [busy, setBusy] = useState<string | null>(null);
+  const busyRef = useRef(busy);
+  busyRef.current = busy;
   const [recording, setRecording] = useState(false);
   const [liveTranscript, setLive] = useState("");
   const [voice, setVoice] = useState<VoiceState>("off");
   const [queued, setQueued] = useState(0);
   const recRef = useRef<{ media: MediaRecorder; speech: SpeechRec | null; chunks: Blob[]; finalText: string } | null>(null);
+  /** The chat request in flight, so Stop can cancel it. */
+  const abortRef = useRef<AbortController | null>(null);
+  const [canStop, setCanStop] = useState(false);
+  /** Which AI the server has, for naming the model when a reply doesn't say. */
+  const serverRef = useRef<ServerStatus | null>(null);
+  useEffect(() => { serverStatus().then((s) => { serverRef.current = s; }); }, []);
+  const askedModel = () => choiceName(pickedModel(getUserKeys(), serverRef.current)) || undefined;
 
   const push = (m: Omit<UIMessage, "id">) => setMessages((xs) => [...xs, { ...m, id: rid() }]);
 
   const handleResult = useCallback(
     (reply: string, actions: AIAction[], extra?: { imageDataUrl?: string; source?: NoteSource; message?: Partial<UIMessage> }) => {
+      const { all } = storeRef.current;
+      const before = new Set([...all.notes, ...all.todos, ...all.transactions].map((x) => x.id));
       const { filed, links, transactionIds, created } = storeRef.current.applyActions(actions, extra);
       markFiled(created.map((c) => c.id));
       pulseTabs([...new Set(links.map((l) => (l ? TAB_OF[l.kind] : undefined)).filter((t): t is Tab => Boolean(t)))]);
       const isCapture = extra?.source === "ocr" || extra?.source === "share";
-      push({ role: "assistant", content: reply, filed, links, splitTxId: isCapture ? transactionIds[0] : undefined, ...extra?.message });
+      // Only what didn't exist before can be undone by removing it (a task marked done, a split, a budget can't).
+      const newItems = created.filter((c) => c.kind !== "stickies" && !before.has(c.id));
+      push({
+        role: "assistant", content: reply, filed, links, newItems: newItems.length ? newItems : undefined,
+        splitTxId: isCapture ? transactionIds[0] : undefined, ...extra?.message,
+      });
       if (filed.length) toast(filed.join("\n"));
       const tab = tabFor(actions);
       if (tab && extra?.source !== "chat") onFiled(tab);
@@ -178,15 +232,15 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
     [toast, onFiled],
   );
 
-  const fail = useCallback((e: unknown) => {
+  const fail = useCallback((e: unknown, questionId?: string) => {
     const msg = e instanceof Error ? e.message : String(e);
-    push({ role: "assistant", content: `⚠️ ${msg}`, error: true });
+    push({ role: "assistant", content: msg, error: true, questionId });
     toast(msg, "error");
   }, [toast]);
 
   /** A speech problem: say so in the chat, with a shortcut to the key settings. */
   const failSpeech = useCallback((msg: string) => {
-    push({ role: "assistant", content: `⚠️ ${msg}`, error: true });
+    push({ role: "assistant", content: msg, error: true });
     toast(msg, "error", /key/i.test(msg) ? { label: "Add a key", run: () => openSettings("api", "stt") } : undefined);
   }, [toast]);
 
@@ -202,47 +256,101 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
       toast("You're offline. The message is queued and will be sent when you reconnect.");
       return null;
     }
-    const userMsg: UIMessage = { id: rid(), role: "user", content: text };
+    const userMsg: UIMessage = { id: rid(), role: "user", content: text, retryText: text };
     // "save that" (or "yes" to a reply that offered to save itself): the reply above, saved as shown.
     // No model rewrites it — one used to save a garbled copy from memory.
     const previous = [...messagesRef.current].reverse().find((m) => m.role === "assistant" && !m.error);
     if (previous && canSaveAsNote(previous) && (savesPreviousReply(text) || (agrees(text) && offersToSave(previous.content)))) {
-      setMessages((xs) => [...xs, userMsg]);
+      setMessages((xs) => [...xs, { ...userMsg, retryText: undefined }]);
       saveRef.current(previous.id);
       return null;
     }
     // Sent with nothing after the colon, models announced "I've saved your note" and saved nothing.
     const about = noteQuestion(text);
     const asked = about && !about.ask ? `About my note “${about.title}”: give me a short summary of it and one or two useful suggestions.` : text;
-    const history = [...messagesRef.current.filter((m) => !m.error && !m.queued), { ...userMsg, content: asked }].map(({ role, content }) => ({ role, content }));
+    const history = [...messagesRef.current.filter((m) => !m.error && !m.queued && !m.stopped), { ...userMsg, content: asked }].map(({ role, content }) => ({ role, content }));
     setMessages((xs) => [...xs, userMsg]);
     setBusy("Thinking…");
+    const abort = new AbortController();
+    abortRef.current = abort;
+    setCanStop(true);
     try {
       // Retrieval: send the full text of the notes most related to the question.
-      const relevant = await semanticNotes(storeRef.current.notes, text, 4).catch(() => []);
-      const named = namedNotes(storeRef.current.notes, text);
-      const context = storeRef.current.buildContext([
-        ...named,
-        ...relevant.filter((r) => r.score > 0.2 && !named.includes(r.note)).map((r) => r.note),
-      ].slice(0, 5));
+      const s = storeRef.current;
+      const relevant = await semanticNotes(s.notes, text, 4).catch(() => []);
+      const named = namedNotes(s.notes, text);
+      const picked = [...named, ...relevant.filter((r) => r.score > 0.2 && !named.includes(r.note)).map((r) => r.note)].slice(0, 5);
       // A question or a request for ideas is answered, never filed.
-      const res = await api.chat(history, context, { tools: !answerOnly(text) });
+      const question = answerOnly(text);
+      // A question is answered from numbered items of the user's own data, which the answer cites as [n].
+      const dataSources = question
+        ? answerSources(
+            { notes: s.notes, todos: s.todos, transactions: s.transactions, budgets: s.settings.budgets, categories: s.categories, currency: s.settings.currency },
+            text,
+            picked,
+          )
+        : [];
+      const context = s.buildContext(picked, dataSources);
+      if (abort.signal.aborted) throw new DOMException("Stopped", "AbortError");
+      const started = performance.now();
+      const res = await api.chat(history, context, { tools: !question, signal: abort.signal });
+      const ms = performance.now() - started;
       // A question about a note is answered, never filed: models used to save the note again.
       const note = about && storeRef.current.notes.find((n) => !n.deletedAt && (n.title.trim() || "Untitled").toLowerCase() === about.title.toLowerCase());
       const webTopic = note ? { noteId: note.id, noteTitle: note.title || "Untitled", question: about!.ask } : undefined;
       // Amounts are checked against the message, whichever model answered ("25k" is not 25).
       const actions = webTopic && isQuestion(text) ? [] : groundAmounts(res.actions, text);
-      handleResult(res.reply, actions, { source: "chat", message: { questionId: userMsg.id, webTopic, refused: res.refused } });
+      // A refusal from the guard wasn't written by a model; demo replies are rule-based.
+      const model = res.refused ? undefined : res.model ? modelDisplayName(res.model) : res.demo ? undefined : askedModel();
+      handleResult(res.reply, actions, {
+        source: "chat",
+        message: {
+          questionId: userMsg.id, webTopic, refused: res.refused, demo: res.demo, model, ms,
+          dataSources: dataSources.length ? dataSources : undefined,
+        },
+      });
       return res.reply;
     } catch (e) {
-      fail(e);
+      if (abort.signal.aborted) {
+        push({ role: "assistant", content: "Stopped. Nothing was saved.", stopped: true, questionId: userMsg.id });
+        return null;
+      }
+      fail(e, userMsg.id);
       return null;
     } finally {
+      if (abortRef.current === abort) {
+        abortRef.current = null;
+        setCanStop(false);
+      }
       setBusy(null);
     }
   }, [handleResult, fail, toast]);
   const sendRef = useRef(send);
   sendRef.current = send;
+
+  const stop = useCallback(() => { abortRef.current?.abort(); }, []);
+
+  const retry = useCallback((replyId: string) => {
+    if (busyRef.current) return;
+    const xs = messagesRef.current;
+    const reply = xs.find((m) => m.id === replyId);
+    const at = reply?.questionId ? xs.findIndex((m) => m.id === reply.questionId) : -1;
+    const text = xs[at]?.retryText;
+    if (!reply || at < 0 || !text) return;
+    // The question and its reply leave the thread, then the question is asked again.
+    const kept = xs.slice(0, at);
+    messagesRef.current = kept;
+    setMessages(kept);
+    void sendRef.current(text);
+  }, []);
+
+  const undo = useCallback((replyId: string) => {
+    const m = messagesRef.current.find((x) => x.id === replyId);
+    if (!m?.newItems?.length || m.undone) return;
+    for (const it of m.newItems) storeRef.current.remove(it.kind, it.id);
+    setMessages((ms) => ms.map((x) => (x.id === replyId ? { ...x, undone: true } : x.id === m.savedFrom ? { ...x, savedAsNote: false } : x)));
+    toast(m.newItems.length === 1 ? "Undone. It's been removed." : `Undone. ${m.newItems.length} items removed.`);
+  }, [toast]);
 
   const saveAsNote = useCallback((replyId: string) => {
     const xs = messagesRef.current;
@@ -251,15 +359,19 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
     if (!reply) return;
     const question = xs.find((m) => m.id === reply.questionId)?.content
       ?? [...xs.slice(0, at)].reverse().find((m) => m.role === "user" && !agrees(m.content))?.content;
+    // Citations stay readable in the note: renumbered as shown ([1]), with what they point to listed under the text.
+    const cited = citations(reply.content, reply.dataSources);
+    const list = sourcesText(cited.list);
+    const body = noteContentFromReply(renumbered(reply.content, cited));
     const { filed, links, created } = storeRef.current.applyActions(
-      [{ type: "create_note", title: replyNoteTitle(reply.content, question), content: noteContentFromReply(reply.content) }],
+      [{ type: "create_note", title: replyNoteTitle(withoutCitations(reply.content), question), content: list ? `${body}\n\n${list}` : body }],
       { source: "chat" },
     );
     markFiled(created.map((c) => c.id));
     pulseTabs(["notes"]);
     setMessages((ms) => [
       ...ms.map((m) => (m.id === replyId ? { ...m, savedAsNote: true } : m)),
-      { id: rid(), role: "assistant", content: "Saved it to Notes, as written.", filed, links },
+      { id: rid(), role: "assistant", content: "Saved it to Notes, as written.", filed, links, newItems: created.filter((c) => c.kind !== "stickies"), savedFrom: replyId },
     ]);
   }, []);
   const saveRef = useRef(saveAsNote);
@@ -271,8 +383,10 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
     push({ role: "user", content: `Ideas from the web for “${topic.noteTitle}”` });
     setBusy("Searching the web…");
     try {
+      const started = performance.now();
       const res = await api.webIdeas(note.title, note.content, topic.question);
-      push({ role: "assistant", content: res.text, sources: res.sources });
+      // Web search is Claude's: the model asked is the one that answered.
+      push({ role: "assistant", content: res.text, sources: res.sources, model: askedModel(), ms: performance.now() - started });
     } catch (e) { fail(e); } finally { setBusy(null); }
   }, [fail]);
 
@@ -299,10 +413,10 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
   }, [store.ready]);
 
   const scan = useCallback(async (file: Blob, source: NoteSource = "ocr") => {
-    setBusy("Reading image…");
+    setBusy("Reading the image…");
     try {
       const { blob, dataUrl, thumb } = await resizeImage(file);
-      push({ role: "user", content: source === "share" ? "📤 Shared an image" : "📷 Scanned an image", imageUrl: dataUrl });
+      push({ role: "user", content: source === "share" ? "Shared an image" : "Scanned an image", imageUrl: dataUrl });
       const res = await api.captureImage(blob, storeRef.current.buildContext());
       handleResult(res.reply, res.actions, { imageDataUrl: thumb, source });
     } catch (e) { fail(e); } finally { setBusy(null); }
@@ -359,8 +473,8 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
           return failSpeech("I didn't catch any speech. Try again a little closer to the microphone.");
         }
         const audio = new Blob(state.chunks, { type: media.mimeType || "audio/webm" });
-        setBusy("Summarizing recording…");
-        push({ role: "user", content: `🎙️ Recording${transcript ? `: “${transcript.slice(0, 120)}…”` : ""}` });
+        setBusy("Summarizing the recording…");
+        push({ role: "user", content: `Voice recording${transcript ? `: “${transcript.slice(0, 120)}${transcript.length > 120 ? "…" : ""}”` : ""}` });
         try {
           const res = await api.captureAudio(audio, transcript, storeRef.current.buildContext());
           handleResult(res.reply, res.actions, { source: "recording" });
@@ -441,7 +555,7 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
       if (!voiceRef.current.on) return;
       if (reply && storeRef.current.settings.voiceReplies && "speechSynthesis" in window) {
         setVoice("speaking");
-        const u = new SpeechSynthesisUtterance(reply.replace(/\s*\(demo mode[^)]*\)/i, "").replace(/[*_#`]/g, "").slice(0, 700));
+        const u = new SpeechSynthesisUtterance(withoutCitations(reply).replace(/\s*\(demo mode[^)]*\)/i, "").replace(/[*_#`]/g, "").slice(0, 700));
         u.lang = "en-US";
         u.onend = u.onerror = () => { if (voiceRef.current.on) listenRef.current(); };
         speechSynthesis.speak(u);
@@ -459,7 +573,7 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
     if (recRef.current) return toast("Stop the recording first.", "error");
     if (!getSpeechRecognition()) return failSpeech(NO_BROWSER_SPEECH);
     voiceRef.current.on = true;
-    toast("🎧 Voice mode on. Speak naturally; say “stop” to end.");
+    toast("Voice mode is on. Speak naturally, and say “stop” to end.");
     listenRef.current();
   }, [stopVoice, toast, failSpeech]);
 
@@ -468,8 +582,8 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
   return (
     <AssistantCtx.Provider
       value={{
-        messages, busy, recording, liveTranscript, voice, queued,
-        send, scan, startRecording, stopRecording, toggleVoice,
+        messages, busy, canStop, recording, liveTranscript, voice, queued,
+        send, stop, retry, undo, scan, startRecording, stopRecording, toggleVoice,
         clear: () => setMessages((xs) => xs.filter((m) => m.queued)),
         saveAsNote, searchWeb, openWebSearch,
       }}

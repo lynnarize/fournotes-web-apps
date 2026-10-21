@@ -47,23 +47,23 @@ export default function CategorySelect({ value, onChange, className = "", ariaLa
 
       <Modal open={adding} onClose={() => setAdding(false)} title="New category">
         <form
-          className="space-y-3 p-4"
+          className="space-y-4 p-5"
           onSubmit={(e) => { e.preventDefault(); create(); }}
         >
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">Category name
+          <label className="flex flex-col gap-1.5 text-[13px] text-[var(--text-secondary)]">Category name
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
-              placeholder="e.g. Pets, Travel, Kids"
-              className="h-9 rounded-md bg-[var(--hover)] px-2.5 text-sm text-[var(--text)] outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              placeholder="Pets, Travel, Kids"
+              className="field text-sm text-[var(--foreground)] max-md:h-11"
             />
           </label>
-          <p className="text-xs text-[var(--muted)]">It will appear everywhere you pick a category, and you can give it a budget.</p>
+          <p className="text-[13px] text-[var(--text-muted)]">It appears everywhere you pick a category, and you can give it a budget.</p>
           <div className="flex justify-end gap-2">
-            <button type="button" className="btn-ghost" onClick={() => setAdding(false)}>Cancel</button>
-            <button className="rounded-md bg-[var(--text)] px-3 py-1 text-sm text-[var(--bg)] disabled:opacity-30" disabled={!name.trim()}>Add</button>
+            <button type="button" className="btn btn-plain" onClick={() => setAdding(false)}>Cancel</button>
+            <button className="btn btn-primary" disabled={!name.trim()}>Add</button>
           </div>
         </form>
       </Modal>

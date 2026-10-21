@@ -2,7 +2,7 @@
 // Confirmation for actions that permanently delete data: the button stays disabled
 // until the user types the confirmation word, so it can't be done by a stray tap.
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Icon, inputBox, Modal } from "./ui";
+import { Icon, Modal } from "./ui";
 
 export default function TypeToConfirm({ open, onClose, title, children, word = "delete", confirmLabel, onConfirm }: {
   open: boolean;
@@ -41,20 +41,20 @@ export default function TypeToConfirm({ open, onClose, title, children, word = "
   return (
     <Modal open={open} onClose={() => !working && onClose()} title={title}>
       <form
-        className="space-y-4 p-4 text-sm"
+        className="flex flex-col gap-4 p-5 text-sm"
         onSubmit={(e) => {
           e.preventDefault();
           void confirm();
         }}
       >
-        <div className="flex gap-3 rounded-lg p-3" style={{ background: "color-mix(in srgb, var(--danger) 10%, transparent)" }}>
+        <div className="flex gap-3 rounded-[18px] bg-[var(--danger-subtle)] p-4">
           <Icon name="trash" size={18} className="mt-0.5 shrink-0 text-[var(--danger)]" />
           <div className="space-y-1.5 leading-relaxed">{children}</div>
         </div>
 
-        <label className="block space-y-1.5">
-          <span className="text-[var(--muted)]">
-            Type <strong className="font-semibold text-[var(--text)]">{word}</strong> to confirm
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[var(--text-secondary)]">
+            Type <strong className="font-medium text-[var(--foreground)]">{word}</strong> to confirm
           </span>
           <input
             ref={inputRef}
@@ -65,19 +65,15 @@ export default function TypeToConfirm({ open, onClose, title, children, word = "
             autoCorrect="off"
             spellCheck={false}
             aria-label={`Type ${word} to confirm`}
-            className={`${inputBox} h-11 w-full`}
+            className="field field-lg"
           />
         </label>
 
         <div className="flex flex-wrap justify-end gap-2">
-          <button type="button" className="min-h-11 rounded-md border border-[var(--line)] px-4 hover:bg-[var(--hover)] sm:min-h-9" onClick={onClose} disabled={working}>
+          <button type="button" className="btn btn-plain max-md:h-11" onClick={onClose} disabled={working}>
             Cancel
           </button>
-          <button
-            type="submit"
-            disabled={!ready || working}
-            className="min-h-11 rounded-md bg-[var(--danger)] px-4 font-medium text-white transition-opacity disabled:opacity-40 sm:min-h-9"
-          >
+          <button type="submit" disabled={!ready || working} className="btn btn-danger-solid max-md:h-11">
             {working ? "Deleting…" : confirmLabel}
           </button>
         </div>

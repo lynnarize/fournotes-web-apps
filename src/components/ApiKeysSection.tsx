@@ -11,7 +11,8 @@ import {
   OPENROUTER_FREE_MODELS, OPENROUTER_KEYS_URL, saveUserKeys, useUserKeys, type AiProvider, type SttProvider, type UserKeys,
 } from "@/lib/byok";
 import SecretInput from "./SecretInput";
-import { inputBox, useToast } from "./ui";
+import { SettingsBlock, SettingsGroup, SettingsRow, Switch } from "./SettingsSection";
+import { Icon, useToast } from "./ui";
 
 type Service = AiProvider | "voyage" | "stt";
 type Tab = AiProvider | "more";
@@ -32,8 +33,11 @@ const PROVIDER_NAME: Record<AiProvider, string> = { openrouter: "OpenRouter", op
 
 const normalized = (k: UserKeys) => JSON.stringify(Object.entries(k).filter(([, v]) => v).sort());
 const modelLabel = (id: string) => OPENROUTER_FREE_MODELS.find((m) => m.id === id)?.label ?? id;
-const hint = "text-xs leading-relaxed text-[var(--muted)]";
-const link = "text-[var(--accent)]";
+const hint = "text-[13px] leading-relaxed text-[var(--text-muted)]";
+const link = "inline-flex items-center gap-1 text-[13px] text-[var(--foreground)] underline decoration-[var(--border-strong)] underline-offset-4 hover:decoration-[var(--foreground)]";
+/** Kit controls, grown to 44px on phones. */
+const FIELD = "field max-md:h-11";
+const SMALL = "btn btn-sm max-md:h-11";
 
 export default function ApiKeysSection() {
   const toast = useToast();
@@ -138,18 +142,18 @@ export default function ApiKeysSection() {
 
   const using =
     savedActive === "anthropic"
-      ? { label: "Your Claude key", detail: `${maskKey(keys.anthropicKey)} · ${keys.anthropicModel ?? server?.model ?? "default model"}`, tone: "var(--ok)" }
+      ? { label: "Your Claude key", detail: `${maskKey(keys.anthropicKey)}, ${keys.anthropicModel ?? server?.model ?? "default model"}`, tone: "var(--success)" }
       : savedActive === "opencode"
-        ? { label: "Your OpenCode Go key", detail: `${maskKey(keys.opencodeKey)} · ${opencodeLabel(keys.opencodeGoModel)}`, tone: "var(--ok)" }
+        ? { label: "Your OpenCode Go key", detail: `${maskKey(keys.opencodeKey)}, ${opencodeLabel(keys.opencodeGoModel)}`, tone: "var(--success)" }
         : savedActive === "openrouter"
           ? keys.openrouterTier === "paid" && keys.openrouterPaidModel
-            ? { label: "Your OpenRouter key (paid)", detail: `${maskKey(keys.openrouterKey)} · ${keys.openrouterPaidModel}`, tone: "var(--ok)" }
-            : { label: "Your OpenRouter key", detail: `${maskKey(keys.openrouterKey)} · ${modelLabel(keys.openrouterModel ?? server?.openrouterModel ?? "")}`, tone: "var(--ok)" }
+            ? { label: "Your OpenRouter key (paid)", detail: `${maskKey(keys.openrouterKey)}, ${keys.openrouterPaidModel}`, tone: "var(--success)" }
+            : { label: "Your OpenRouter key", detail: `${maskKey(keys.openrouterKey)}, ${modelLabel(keys.openrouterModel ?? server?.openrouterModel ?? "")}`, tone: "var(--success)" }
           : server?.anthropic
             ? { label: "Shared key (Claude)", detail: server.model, tone: "var(--accent)" }
             : server?.openrouter
-              ? { label: "Shared free key", detail: `${modelLabel(server.openrouterModel)} · limited each day`, tone: "var(--accent)" }
-              : { label: "Demo mode", detail: "rule-based replies, no photo reading", tone: "#d9730d" };
+              ? { label: "Shared free key", detail: `${modelLabel(server.openrouterModel)}, limited each day`, tone: "var(--accent)" }
+              : { label: "Demo mode", detail: "Rule-based replies, no photo reading", tone: "var(--warning)" };
 
   const keyInput = (value: string | undefined, onChange: (v: string) => void, placeholder: string, label: string) => (
     <SecretInput
@@ -158,14 +162,15 @@ export default function ApiKeysSection() {
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       aria-label={label}
-      className={`${inputBox} min-w-0 flex-1 font-mono text-xs ${value && !isValidKey(value) ? "border-[var(--danger)]" : ""}`}
+      aria-invalid={value && !isValidKey(value) ? true : undefined}
+      className={`${FIELD} min-w-0 flex-1 basis-48 font-mono text-xs`}
     />
   );
 
   const testButton = (service: Service, value: string | undefined) => (
     <button
       type="button"
-      className="btn-ghost border border-[var(--line)] text-xs"
+      className={`${SMALL} btn-secondary`}
       disabled={!value || !isValidKey(value) || testing !== null}
       onClick={() => test(service)}
     >
@@ -174,35 +179,39 @@ export default function ApiKeysSection() {
   );
 
   const keyRow = (service: Service, value: string | undefined, onChange: (v: string) => void, placeholder: string, label: string) => (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-2">
       {keyInput(value, onChange, placeholder, label)}
-      <button type="button" className="btn-ghost text-xs" onClick={() => setReveal((r) => !r)} aria-pressed={reveal}>{reveal ? "Hide" : "Show"}</button>
-      {testButton(service, value)}
+      <span className="flex gap-1">
+        <button type="button" className={`${SMALL} btn-plain`} onClick={() => setReveal((r) => !r)} aria-pressed={reveal}>{reveal ? "Hide" : "Show"}</button>
+        {testButton(service, value)}
+      </span>
     </div>
   );
 
   const resultLine = (service: Service) => {
     const r = results[service];
     return r ? (
-      <p className="text-xs" style={{ color: r.ok ? "var(--ok)" : "var(--danger)" }} role="status">
-        {r.ok ? "✓" : "✗"} {r.message}
+      <p className="flex items-start gap-1.5 text-[13px]" style={{ color: r.ok ? "var(--success)" : "var(--danger)" }} role="status">
+        <Icon name={r.ok ? "check" : "warning"} size={15} className="mt-px shrink-0" />
+        {r.message}
       </p>
     ) : null;
   };
 
   const header = (title: React.ReactNode, href: string, linkText: string) => (
-    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--muted)]">
-      <span className="flex items-center gap-1.5">{title}</span>
-      <a href={href} target="_blank" rel="noreferrer" className={link}>{linkText} ↗</a>
+    <div className="flex flex-wrap items-center justify-between gap-2 text-[13px] text-[var(--text-secondary)]">
+      <span className="flex flex-wrap items-center gap-2">{title}</span>
+      <a href={href} target="_blank" rel="noreferrer" className={link}>
+        {linkText}
+        <Icon name="arrowUpRight" size={14} />
+      </a>
     </div>
   );
 
-  const badge = (text: string, color: string) => (
-    <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white" style={{ background: color }}>{text}</span>
-  );
+  const badge = (text: string, tone: "info" | "success") => <span className={`badge badge-${tone}`}>{text}</span>;
 
   const tierSwitch = (label: string, value: "free" | "paid", disabled: boolean, onPick: (tier: "free" | "paid") => void) => (
-    <div role="radiogroup" aria-label={label} className="inline-flex shrink-0 rounded-md border border-[var(--line)] p-0.5 text-xs">
+    <div role="radiogroup" aria-label={label} className={`seg shrink-0 ${disabled ? "opacity-45" : ""}`}>
       {(["free", "paid"] as const).map((tier) => (
         <button
           key={tier}
@@ -211,7 +220,7 @@ export default function ApiKeysSection() {
           aria-checked={value === tier}
           disabled={disabled}
           onClick={() => onPick(tier)}
-          className={`min-h-8 rounded px-3 disabled:opacity-40 ${value === tier ? "bg-[var(--text)] text-[var(--bg)]" : "text-[var(--muted)] hover:text-[var(--text)]"}`}
+          className="max-md:!h-[38px]"
         >
           {tier === "free" ? "Free" : "Paid"}
         </button>
@@ -223,9 +232,11 @@ export default function ApiKeysSection() {
   const useForAi = (p: AiProvider, value: string | undefined) =>
     value && providerKeys > 1 ? (
       draftActive === p ? (
-        <p className="text-xs text-[var(--ok)]">✓ AI requests use this key</p>
+        <p className="flex items-center gap-1.5 text-[13px] text-[var(--success)]"><Icon name="check" size={15} /> AI requests use this key</p>
       ) : (
-        <button type="button" className={`text-xs ${link}`} onClick={() => set({ aiProvider: p })}>Use this key for AI instead of {draftActive && PROVIDER_NAME[draftActive]}</button>
+        <button type="button" className={`${link} self-start text-left`} onClick={() => set({ aiProvider: p })}>
+          Use this key for AI instead of {draftActive && PROVIDER_NAME[draftActive]}
+        </button>
       )
     ) : null;
 
@@ -233,7 +244,7 @@ export default function ApiKeysSection() {
     openrouter: (
       <>
         {header(
-          <>{badge(paid ? "Paid" : "Free", paid ? "var(--accent)" : "var(--ok)")} OpenRouter key {server?.openrouter && !draft.openrouterKey ? "· server key in use" : ""}</>,
+          <>{badge(paid ? "Paid" : "Free", paid ? "info" : "success")} OpenRouter key {server?.openrouter && !draft.openrouterKey ? <span className="text-[var(--text-muted)]">Server key in use</span> : null}</>,
           paid ? OPENROUTER_CREDITS_URL : OPENROUTER_KEYS_URL,
           paid ? "Add credits" : "Get a free key",
         )}
@@ -254,13 +265,14 @@ export default function ApiKeysSection() {
                 }}
                 placeholder={paidModels ? "Search, e.g. claude, gpt, gemini" : paidError ? "Model ID, e.g. provider/model" : "Loading models…"}
                 aria-label="Paid model"
+                aria-invalid={paidMissing && draft.openrouterPaidModel ? true : undefined}
                 autoComplete="off"
                 spellCheck={false}
-                className={`${inputBox} min-w-0 flex-1 font-mono text-xs ${paidMissing && draft.openrouterPaidModel ? "border-[var(--danger)]" : ""}`}
+                className={`${FIELD} min-w-0 flex-1 basis-48 font-mono text-xs disabled:opacity-45`}
               />
               <datalist id="openrouter-paid-models">
                 {paidModels?.map((m) => (
-                  <option key={m.id} value={m.id}>{`${m.name} · ${perMillion(m.prompt)} in / ${perMillion(m.completion)} out${m.vision ? " · reads photos" : ""}`}</option>
+                  <option key={m.id} value={m.id}>{`${m.name}, ${perMillion(m.prompt)} in / ${perMillion(m.completion)} out${m.vision ? ", reads photos" : ""}`}</option>
                 ))}
               </datalist>
             </>
@@ -270,7 +282,7 @@ export default function ApiKeysSection() {
               disabled={!draft.openrouterKey}
               onChange={(e) => set({ openrouterModel: e.target.value || undefined })}
               aria-label="Free model"
-              className={`${inputBox} min-w-0 flex-1`}
+              className={`${FIELD} min-w-0 flex-1 basis-48 disabled:opacity-45`}
             >
               <option value="">Default{server ? ` (${modelLabel(server.openrouterModel)})` : ""}</option>
               {OPENROUTER_FREE_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -298,7 +310,7 @@ export default function ApiKeysSection() {
 
     opencode: (
       <>
-        {header(<>{badge("Go", "var(--accent)")} OpenCode Go key</>, OPENCODE_GO_URL, "Subscribe to Go")}
+        {header(<>{badge("Go", "info")} OpenCode Go key</>, OPENCODE_GO_URL, "Subscribe to Go")}
         {keyRow("opencode", draft.opencodeKey, (v) => set({ opencodeKey: v }), "sk-…", "OpenCode API key")}
         {resultLine("opencode")}
         <select
@@ -307,14 +319,14 @@ export default function ApiKeysSection() {
           disabled={!draft.opencodeKey}
           onChange={(e) => set({ opencodeGoModel: e.target.value || undefined })}
           aria-label="OpenCode Go model"
-          className={`${inputBox} mt-1 w-full`}
+          className={`${FIELD} mt-1 disabled:opacity-45`}
         >
           <option value="">Default ({opencodeLabel()})</option>
-          {OPENCODE_GO_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}{m.vision ? " · reads photos" : ""}</option>)}
+          {OPENCODE_GO_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}{m.vision ? ", reads photos" : ""}</option>)}
         </select>
         <p className={hint}>
           Uses your OpenCode Go subscription ($10/month) with its 5-hour, weekly and monthly limits. Photos go to DeepSeek V4 Flash Vision,
-          included in Go. OpenCode&apos;s free models only work inside OpenCode itself, so they can&apos;t be used here — for free AI, use an OpenRouter key.
+          included in Go. OpenCode&apos;s free models only work inside OpenCode itself, so they can&apos;t be used here. For free AI, use an OpenRouter key.
         </p>
         {useForAi("opencode", draft.opencodeKey)}
       </>
@@ -323,21 +335,21 @@ export default function ApiKeysSection() {
     anthropic: (
       <>
         {header(
-          <>{badge("Paid", "var(--accent)")} Anthropic key · best quality {server?.anthropic && !draft.anthropicKey ? "· server key in use" : ""}</>,
+          <>{badge("Paid", "info")} Anthropic key, best quality {server?.anthropic && !draft.anthropicKey ? <span className="text-[var(--text-muted)]">Server key in use</span> : null}</>,
           "https://console.anthropic.com/settings/keys",
           "Get a key",
         )}
         {keyRow("anthropic", draft.anthropicKey, (v) => set({ anthropicKey: v }), "sk-ant-api03-…", "Anthropic API key")}
         {resultLine("anthropic")}
-        <div className="grid gap-2 pt-1 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">Main model
-            <select value={draft.anthropicModel ?? ""} disabled={!draft.anthropicKey} onChange={(e) => set({ anthropicModel: e.target.value || undefined })} className={inputBox}>
+        <div className="grid gap-3 pt-1 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5 text-[13px] text-[var(--text-secondary)]">Main model
+            <select value={draft.anthropicModel ?? ""} disabled={!draft.anthropicKey} onChange={(e) => set({ anthropicModel: e.target.value || undefined })} className={`${FIELD} disabled:opacity-45`}>
               <option value="">Default{server ? ` (${server.model})` : ""}</option>
               {MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">Quick jobs model
-            <select value={draft.anthropicFastModel ?? ""} disabled={!draft.anthropicKey} onChange={(e) => set({ anthropicFastModel: e.target.value || undefined })} className={inputBox}>
+          <label className="flex flex-col gap-1.5 text-[13px] text-[var(--text-secondary)]">Quick jobs model
+            <select value={draft.anthropicFastModel ?? ""} disabled={!draft.anthropicKey} onChange={(e) => set({ anthropicFastModel: e.target.value || undefined })} className={`${FIELD} disabled:opacity-45`}>
               <option value="">Default{server ? ` (${server.fastModel})` : ""}</option>
               {MODEL_OPTIONS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
@@ -350,21 +362,22 @@ export default function ApiKeysSection() {
 
     more: (
       <>
-        <div className="space-y-1">
+        <div className="flex flex-col gap-2">
           {header(
-            <>Voyage AI key · search notes by meaning{server?.voyage && !draft.voyageKey ? " · server key in use" : ""}</>,
+            <>Voyage AI key, search notes by meaning{server?.voyage && !draft.voyageKey ? <span className="text-[var(--text-muted)]">Server key in use</span> : null}</>,
             "https://dashboard.voyageai.com/api-keys",
             "Get a key",
           )}
           {keyRow("voyage", draft.voyageKey, (v) => set({ voyageKey: v }), "pa-…", "Voyage API key")}
           {resultLine("voyage")}
         </div>
-        <div id="settings-field-stt" className="scroll-mt-20 space-y-1 border-t border-[var(--line)] pt-3">
-          <div className="text-xs text-[var(--muted)]">
-            Speech-to-text key · more accurate recordings{server?.stt && !draft.sttKey ? " · server key in use" : ""}
+        <div id="settings-field-stt" className="mt-2 flex scroll-mt-20 flex-col gap-2 border-t border-[var(--border-subtle)] pt-4">
+          <div className="flex flex-wrap items-center gap-2 text-[13px] text-[var(--text-secondary)]">
+            Speech-to-text key, more accurate recordings
+            {server?.stt && !draft.sttKey ? <span className="text-[var(--text-muted)]">Server key in use</span> : null}
           </div>
-          <div className="flex gap-2">
-            <select value={draft.sttProvider ?? "openai"} onChange={(e) => set({ sttProvider: e.target.value as SttProvider })} aria-label="Speech-to-text provider" className={`${inputBox} text-xs`}>
+          <div className="flex flex-wrap gap-2">
+            <select value={draft.sttProvider ?? "openai"} onChange={(e) => set({ sttProvider: e.target.value as SttProvider })} aria-label="Speech-to-text provider" className={`${FIELD} w-auto`}>
               <option value="openai">OpenAI Whisper</option>
               <option value="groq">Groq Whisper</option>
             </select>
@@ -385,71 +398,77 @@ export default function ApiKeysSection() {
   };
 
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md bg-[var(--hover)] px-3 py-2">
-        <span className="h-2 w-2 rounded-full" style={{ background: using.tone }} />
-        <span>AI is using: <b>{using.label}</b></span>
-        <span className="text-xs text-[var(--muted)]">{using.detail}</span>
-      </div>
+    <div className="flex flex-col gap-4">
+      <SettingsGroup>
+        <SettingsRow
+          icon={<span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: using.tone }} />}
+          label={<><span className="sr-only">AI is using: </span>{using.label}</>}
+          description={using.detail}
+        />
+        {server?.shared && !savedActive && (
+          <SettingsBlock>
+            <p className={hint}>
+              The shared free key allows about {server.sharedPerVisitorDaily ?? 10} AI requests a day ({server.sharedSignedInDaily ?? 40} signed in).
+              Add your own free key for your own allowance.
+            </p>
+          </SettingsBlock>
+        )}
+      </SettingsGroup>
 
-      {server?.shared && !savedActive && (
-        <p className={hint}>
-          Shared free key: about {server.sharedPerVisitorDaily ?? 10} AI requests a day ({server.sharedSignedInDaily ?? 40} signed in).
-          Add your own free key for your own allowance.
-        </p>
-      )}
-
-      <div role="tablist" aria-label="AI providers" className="flex gap-1 overflow-x-auto border-b border-[var(--line)] text-xs">
-        {TABS.map((t) => {
-          const on = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              id={`ai-tab-${t.id}`}
-              aria-selected={on}
-              aria-controls="ai-tab-panel"
-              onClick={() => setTab(t.id)}
-              className={`-mb-px flex min-h-9 shrink-0 items-center gap-1.5 border-b-2 px-3 ${on ? "border-[var(--text)] font-medium text-[var(--text)]" : "border-transparent text-[var(--muted)] hover:text-[var(--text)]"}`}
-            >
-              {t.label}
-              {tabHasKey[t.id] && (
-                <span
-                  className="h-1.5 w-1.5 rounded-full"
-                  style={{ background: t.id === draftActive ? "var(--ok)" : "var(--muted)" }}
-                  title={t.id === draftActive ? "Key saved · used for AI" : "Key saved"}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      <div role="tabpanel" id="ai-tab-panel" aria-labelledby={`ai-tab-${tab}`} className="space-y-1.5">
-        {panels[tab]}
-      </div>
-
-      <div className="space-y-2 border-t border-[var(--line)] pt-3">
-        <label className="flex flex-wrap items-center gap-x-2">
-          <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-          Remember keys on this device
-          <span className="text-xs text-[var(--muted)]">(off: forgotten when this tab closes)</span>
-        </label>
-        <p className={hint}>
-          Keys stay in this browser, encrypted, and are sent only with each AI request. Never stored on the server, synced or backed up; usage is
-          billed to your provider account. Don&apos;t save keys on a shared computer.
-        </p>
-        <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="rounded-md bg-[var(--text)] px-3 py-1 text-sm text-[var(--bg)] disabled:opacity-30" disabled={!dirty || invalid || paidMissing} onClick={save}>
-            Save keys
-          </button>
-          {dirty && <button type="button" className="btn-ghost text-xs" onClick={() => { setDraft(keys); setKeep(persist); setResults({}); }}>Discard changes</button>}
-          {invalid && <span className="text-xs text-[var(--danger)]">A key looks incomplete or has spaces.</span>}
-          {!invalid && paidMissing && <span className="text-xs text-[var(--danger)]">Pick a paid OpenRouter model, or switch back to free.</span>}
-          {hasSaved && <button type="button" className="btn-ghost ml-auto text-xs text-[var(--danger)]" onClick={remove}>Remove keys</button>}
+      <SettingsGroup>
+        <div className="px-4 pt-4">
+          <div role="tablist" aria-label="AI providers" className="seg max-w-full overflow-x-auto">
+            {TABS.map((t) => {
+              const on = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  id={`ai-tab-${t.id}`}
+                  aria-selected={on}
+                  aria-controls="ai-tab-panel"
+                  onClick={() => setTab(t.id)}
+                  className="max-md:!h-[38px]"
+                >
+                  {t.label}
+                  {tabHasKey[t.id] && (
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: t.id === draftActive ? "var(--success)" : "var(--text-muted)" }}
+                      title={t.id === draftActive ? "Key saved, used for AI" : "Key saved"}
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
-      </div>
-    </section>
+        <div role="tabpanel" id="ai-tab-panel" aria-labelledby={`ai-tab-${tab}`} className="flex flex-col gap-2.5 px-5 pb-5 pt-4">
+          {panels[tab]}
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup>
+        <SettingsRow label="Remember keys on this device" description="When off, keys are forgotten as this tab closes">
+          {(labelId) => <Switch checked={keep} onChange={setKeep} labelledBy={labelId} />}
+        </SettingsRow>
+        <SettingsBlock className="flex flex-col gap-3">
+          <p className={hint}>
+            Keys stay in this browser, encrypted, and are sent only with each AI request. Never stored on the server, synced or backed up; usage is
+            billed to your provider account. Don&apos;t save keys on a shared computer.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn btn-primary max-md:h-11" disabled={!dirty || invalid || paidMissing} onClick={save}>
+              Save keys
+            </button>
+            {dirty && <button type="button" className="btn btn-plain max-md:h-11" onClick={() => { setDraft(keys); setKeep(persist); setResults({}); }}>Discard changes</button>}
+            {invalid && <span className="text-[13px] text-[var(--danger)]">A key looks incomplete or has spaces.</span>}
+            {!invalid && paidMissing && <span className="text-[13px] text-[var(--danger)]">Pick a paid OpenRouter model, or switch back to free.</span>}
+            {hasSaved && <button type="button" className="btn btn-danger ml-auto max-md:h-11" onClick={remove}>Remove keys</button>}
+          </div>
+        </SettingsBlock>
+      </SettingsGroup>
+    </div>
   );
 }
