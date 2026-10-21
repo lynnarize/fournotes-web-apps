@@ -82,6 +82,9 @@ type Ctx = {
   liveTranscript: string;
   voice: VoiceState;
   queued: number;
+  /** Today shows the conversation in place of its overview, with the composer at the bottom. */
+  todayChat: boolean;
+  setTodayChat(on: boolean): void;
   send(text: string): Promise<string | null>;
   /** Stop waiting for the reply being written. */
   stop(): void;
@@ -204,6 +207,7 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
   /** The chat request in flight, so Stop can cancel it. */
   const abortRef = useRef<AbortController | null>(null);
   const [canStop, setCanStop] = useState(false);
+  const [todayChat, setTodayChat] = useState(false);
   /** Which AI the server has, for naming the model when a reply doesn't say. */
   const serverRef = useRef<ServerStatus | null>(null);
   useEffect(() => { serverStatus().then((s) => { serverRef.current = s; }); }, []);
@@ -582,7 +586,7 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
   return (
     <AssistantCtx.Provider
       value={{
-        messages, busy, canStop, recording, liveTranscript, voice, queued,
+        messages, busy, canStop, recording, liveTranscript, voice, queued, todayChat, setTodayChat,
         send, stop, retry, undo, scan, startRecording, stopRecording, toggleVoice,
         clear: () => setMessages((xs) => xs.filter((m) => m.queued)),
         saveAsNote, searchWeb, openWebSearch,

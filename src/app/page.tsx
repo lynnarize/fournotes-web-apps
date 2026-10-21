@@ -21,7 +21,7 @@ import { Icon, ToastProvider } from "@/components/ui";
 import { useBackDismiss, useTabHistory } from "@/lib/backstack";
 import { usePulsingTabs } from "@/lib/highlight";
 import { usePresence } from "@/lib/hooks";
-import { scrollToId, useOpenItem, useOpenSettings } from "@/lib/nav";
+import { scrollToId, useOpenItem, useOpenSettings, useOpenTab } from "@/lib/nav";
 import { StoreProvider, useStore } from "@/lib/store";
 import type { Tab } from "@/lib/types";
 
@@ -65,6 +65,9 @@ function Shell() {
     const t = new URLSearchParams(window.location.search).get("tab");
     if (t && t in TITLES) setTab(t as Tab);
   }, []);
+
+  // "Open on Today" from the assistant's panel, and anything else that names a place.
+  useOpenTab(setTab);
 
   // Stickies only show on Today.
   useOpenItem("any", (f) => {

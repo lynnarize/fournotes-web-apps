@@ -1,19 +1,21 @@
 "use client";
 // Where the assistant lives on screen:
-//   hero       Today's composer, under the brief (docked above the tab bar on phones),
-//              with a few suggestions. Sending opens the conversation in the panel.
-//   minimized  Every other tab: an "Ask Four Notes" pill in the corner that opens it.
-// The panel floats at the bottom right on larger screens (a sheet on phones): the thread
-// and a composer. "Open as a full page" spreads the same thread over the whole window.
+//   hero          Today's composer, under the brief (docked above the tab bar on phones),
+//                 with a few suggestions. Sending turns Today into the conversation.
+//   conversation  Today, taken over by the thread: the composer moves to the bottom and the
+//                 conversation fills the page, the sidebar still beside it (as the AI composer does).
+//   minimized     Every other tab: an "Ask Four Notes" pill in the corner that opens a panel
+//                 (a sheet on phones) with the thread and a composer. "Open on Today" spreads it
+//                 over Today's page.
 import { useEffect, useId, useRef, useState } from "react";
 import { useBackDismiss } from "@/lib/backstack";
 import { markFiled } from "@/lib/highlight";
-import { openItem, showChange, useOpenAssistant, type FocusKind } from "@/lib/nav";
+import { openAssistant, openItem, openTab, showChange, useOpenAssistant, type FocusKind } from "@/lib/nav";
 import type { ChangeLink } from "@/lib/store";
 import type { AnswerSource, SourceKind } from "@/lib/types";
 import { useAssistant } from "./assistant";
 import Composer, { BusyRing, type ComposerHandle } from "./assistant/Composer";
-import FullPage from "./assistant/FullPage";
+import Conversation from "./assistant/Conversation";
 import { Glyph, type GlyphName } from "./assistant/icons";
 import { Thread, type ThreadHandlers } from "./assistant/Thread";
 import { ModelMark } from "./ModelMenu";
@@ -45,15 +47,14 @@ function HeaderButton({ icon, label, onClick, disabled }: { icon: GlyphName; lab
   );
 }
 
-export default function ChatDock({ minimized = false, hero = false }: { minimized?: boolean; hero?: boolean }) {
-  const { messages, busy, recording, voice, queued, send, clear } = useAssistant();
+export default function ChatDock({ minimized = false, hero = false, conversation = false }: { minimized?: boolean; hero?: boolean; conversation?: boolean }) {
+  const { messages, busy, recording, voice, queued, send, clear, setTodayChat } = useAssistant();
   /** The panel (the thread and a composer) is showing. */
   const [open, setOpen] = useState(false);
-  /** The thread is spread over the whole window. */
-  const [full, setFull] = useState(false);
   const [unread, setUnread] = useState(false);
   const [splitTx, setSplitTx] = useState<string | null>(null);
-  const heroRef = useRef<ComposerHandle>(null);
+  /** Today's composer, or the conversation's at the bottom of the page. */
+  const pageRef = useRef<ComposerHandle>(null);
   const panelRef = useRef<ComposerHandle>(null);
   const heroEl = useRef<HTMLDivElement>(null);
   const panelEl = useRef<HTMLElement>(null);
@@ -64,28 +65,23 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
     setUnread(false);
     if (focus) setTimeout(() => panelRef.current?.focus(), 80);
   };
-  const collapse = () => {
-    setFull(false);
-    setOpen(false);
-  };
 
-  // Back closes the full page first (back to the panel), then the panel.
-  useBackDismiss(open || full, () => {
-    if (full) {
-      setFull(false);
-      return open;
-    }
-    setOpen(false);
-  });
+  // Back closes the panel; on Today it leaves the conversation for the overview.
+  useBackDismiss(open, () => setOpen(false));
+  useBackDismiss(conversation, () => setTodayChat(false));
 
-  // New messages: show the conversation. On other tabs, a reply that arrives while it's
-  // folded away only marks the pill.
+  // New messages: on Today, the conversation takes the page (a scan or a recording started
+  // from the sidebar lands there too). On other tabs, show the panel, or, for a reply that
+  // arrives while it's folded away, only mark the pill.
   const seen = useRef(messages.length);
   useEffect(() => {
     if (messages.length > seen.current) {
       const last = messages[messages.length - 1];
-      if (!minimized || open || full || last?.role === "user") reveal();
-      else setUnread(true);
+      if (hero) setTodayChat(true);
+      else if (minimized) {
+        if (open || last?.role === "user") reveal();
+        else setUnread(true);
+      }
     }
     seen.current = messages.length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,12 +95,11 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
 
   // "Ask the assistant…" from elsewhere: the request is filled in, not sent. It's the user's to finish.
   useOpenAssistant((prefill) => {
-    if (hero && !open && !full) {
-      if (prefill !== undefined) heroRef.current?.fill(prefill);
-      else heroRef.current?.focus();
+    if (hero || conversation) {
+      if (prefill !== undefined) pageRef.current?.fill(prefill);
+      else pageRef.current?.focus();
       return;
     }
-    setFull(false);
     reveal();
     setTimeout(() => (prefill !== undefined ? panelRef.current?.fill(prefill) : panelRef.current?.focus()), 80);
   });
@@ -115,18 +110,18 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
       const el = e.target as HTMLElement;
       if (e.key !== "/" || e.metaKey || e.ctrlKey || /INPUT|TEXTAREA|SELECT/.test(el.tagName) || el.isContentEditable) return;
       e.preventDefault();
-      if (hero && !open && !full) heroRef.current?.focus();
-      else if (!full) reveal(true);
+      if (hero || conversation) pageRef.current?.focus();
+      else reveal(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hero, open, full]);
+  }, [hero, conversation]);
 
   // A click elsewhere folds the panel away (the click still goes where it was aimed). Menus and
-  // dialogs it opens live elsewhere in the page and aren't "elsewhere"; nor is Today's composer.
+  // dialogs it opens live elsewhere in the page and aren't "elsewhere".
   useEffect(() => {
-    if (!open || full) return;
+    if (!open) return;
     const onDown = (e: PointerEvent) => {
       const t = e.target as Element;
       if (panelEl.current?.contains(t) || heroEl.current?.contains(t) || t.closest?.("[role=menu], [role=dialog]")) return;
@@ -135,18 +130,19 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, [open, full, recording, voice]);
+  }, [open, recording, voice]);
 
-  // Going to something in the app folds the assistant away, so the item isn't hidden behind it.
+  // Going to something in the app folds the panel away, so the item isn't hidden behind it.
+  // On Today the conversation stays where it is, for when you come back.
   const handlers: ThreadHandlers = {
     jump: (link: ChangeLink, all: ChangeLink[]) => {
       if (!link) return;
       markFiled(all.filter((l): l is NonNullable<ChangeLink> => Boolean(l)).map((l) => l.id));
-      collapse();
+      setOpen(false);
       showChange(link);
     },
     openSource: (s: AnswerSource) => {
-      collapse();
+      setOpen(false);
       openItem(OPEN_AS[s.kind], s.id);
     },
     split: setSplitTx,
@@ -159,12 +155,74 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
     if (now) return submit(text);
     panelRef.current?.fill(text);
   };
+  /** The panel's conversation, spread over Today's page. */
+  const openOnToday = () => {
+    setOpen(false);
+    setTodayChat(true);
+    openTab("today");
+  };
 
   const splitModal = (
     <Modal open={!!splitTx} onClose={() => setSplitTx(null)} title="Split bill">
       <div className="p-4">{splitTx && <SplitEditor txId={splitTx} />}</div>
     </Modal>
   );
+
+  if (conversation) {
+    return (
+      <>
+        <Conversation
+          handlers={handlers}
+          composer={pageRef}
+          onSend={submit}
+          onBack={() => setTodayChat(false)}
+          onNewThread={() => {
+            clear();
+            setTodayChat(false);
+            // Today's composer is back in the middle of the page: put the cursor in it.
+            setTimeout(() => openAssistant(), 60);
+          }}
+        />
+        {splitModal}
+      </>
+    );
+  }
+
+  if (hero) {
+    const resume = messages.length > 0;
+    return (
+      <>
+        {/* Phones: docked above the tab bar. Larger screens: in the page, under the brief. */}
+        <div ref={heroEl} className={`no-print fixed inset-x-3 z-[36] md:static md:z-auto ${ABOVE_TABBAR}`}>
+          {resume && (
+            <button type="button" onClick={() => setTodayChat(true)} className="pill pill-sm mb-2 bg-[var(--surface)] shadow-[var(--shadow-floating)] md:hidden">
+              <Glyph name="message" size={16} /> Back to the conversation
+            </button>
+          )}
+          <Composer handle={pageRef} placeholder={PLACEHOLDER} onSend={submit} className="shadow-[var(--shadow-floating)] md:shadow-none" />
+        </div>
+        <div role="group" aria-label="Suggestions" className="no-print hidden flex-wrap gap-2 md:flex">
+          {STARTERS.map((s) => (
+            <button
+              key={s.title}
+              type="button"
+              className="pill disabled:opacity-50"
+              disabled={!!busy && s.send}
+              onClick={() => (s.send ? submit(s.text) : pageRef.current?.fill(s.text))}
+            >
+              <Glyph name={s.icon} size={16} /> {s.title}
+            </button>
+          ))}
+          {resume && (
+            <button type="button" className="pill" onClick={() => setTodayChat(true)}>
+              <Glyph name="message" size={16} /> Back to the conversation
+            </button>
+          )}
+        </div>
+        {splitModal}
+      </>
+    );
+  }
 
   const panel = open && (
     <>
@@ -186,7 +244,7 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
             </span>
           )}
           <HeaderButton icon="newChat" label="New chat" onClick={clear} disabled={!messages.length || !!busy} />
-          <HeaderButton icon="expand" label="Open as a full page" onClick={() => setFull(true)} />
+          <HeaderButton icon="expand" label="Open on Today" onClick={openOnToday} />
           <HeaderButton icon="x" label="Close the assistant" onClick={() => setOpen(false)} />
         </header>
         <Thread handlers={handlers} onStarter={starter} />
@@ -197,58 +255,10 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
     </>
   );
 
-  const fullPage = full && (
-    <FullPage
-      handlers={handlers}
-      onShrink={() => { setFull(false); reveal(); }}
-      onClose={collapse}
-      onNewThread={() => { clear(); collapse(); if (hero) heroRef.current?.focus(); }}
-    />
-  );
-
-  if (hero) {
-    const resume = messages.length > 0 && !open && !full;
-    return (
-      <>
-        {/* Phones: docked above the tab bar. Larger screens: in the page, under the brief. */}
-        <div ref={heroEl} className={`no-print fixed inset-x-3 z-[36] md:static md:z-auto ${ABOVE_TABBAR}`}>
-          {resume && (
-            <button type="button" onClick={() => reveal(true)} className="pill pill-sm mb-2 bg-[var(--surface)] shadow-[var(--shadow-floating)] md:hidden">
-              <Glyph name="message" size={16} /> Back to the conversation
-            </button>
-          )}
-          <Composer handle={heroRef} placeholder={PLACEHOLDER} onSend={submit} className="shadow-[var(--shadow-floating)] md:shadow-none" />
-        </div>
-        <div role="group" aria-label="Suggestions" className="no-print hidden flex-wrap gap-2 md:flex">
-          {STARTERS.map((s) => (
-            <button
-              key={s.title}
-              type="button"
-              className="pill disabled:opacity-50"
-              disabled={!!busy && s.send}
-              onClick={() => (s.send ? submit(s.text) : heroRef.current?.fill(s.text))}
-            >
-              <Glyph name={s.icon} size={16} /> {s.title}
-            </button>
-          ))}
-          {resume && (
-            <button type="button" className="pill" onClick={() => reveal(true)}>
-              <Glyph name="message" size={16} /> Back to the conversation
-            </button>
-          )}
-        </div>
-        {panel}
-        {fullPage}
-        {splitModal}
-      </>
-    );
-  }
-
   return (
     <>
-      {minimized && !open && !full && <AskPill busy={busy} unread={unread} onClick={() => reveal(true)} />}
+      {minimized && !open && <AskPill busy={busy} unread={unread} onClick={() => reveal(true)} />}
       {panel}
-      {fullPage}
       {splitModal}
     </>
   );
