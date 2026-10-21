@@ -264,47 +264,49 @@ export function GoogleSyncPanel() {
 
   if (!g.email) {
     return (
-      <div className="space-y-3">
-        <div>
+      <div className="flex flex-col items-start gap-3">
+        <div className="flex flex-col gap-1">
           <p className="font-medium">Sync with your Google account</p>
-          <p className="mt-1 text-xs leading-relaxed text-[var(--muted)]">
+          <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
             Keep notes, tasks and spending in sync on all your devices. Everything is saved in a private app folder in your own Google Drive
             that only Four Notes can open. What&apos;s already on this device is uploaded when you connect.
           </p>
         </div>
         <GoogleButton onClick={g.connect} />
-        <p className="text-[11px] leading-relaxed text-[var(--faint)]">
-          By connecting you agree to the <a href="/terms" className="underline hover:text-[var(--text)]">Terms</a> and{" "}
-          <a href="/privacy" className="underline hover:text-[var(--text)]">Privacy Policy</a>.
+        <p className="text-xs leading-relaxed text-[var(--text-muted)]">
+          By connecting you agree to the{" "}
+          <a href="/terms" className="underline decoration-[var(--border-strong)] underline-offset-2 hover:text-[var(--foreground)]">Terms</a> and{" "}
+          <a href="/privacy" className="underline decoration-[var(--border-strong)] underline-offset-2 hover:text-[var(--foreground)]">Privacy Policy</a>.
         </p>
-        {g.error && <p className="text-xs text-[var(--danger)]">{g.error}</p>}
+        {g.error && <p className="text-[13px] text-[var(--danger)]" role="alert">{g.error}</p>}
       </div>
     );
   }
 
+  const tone = g.status === "synced" ? "badge-success" : g.status === "error" ? "badge-danger" : g.status === "offline" ? "badge-warning" : "";
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2.5">
         <GoogleG />
         <span className="min-w-0 truncate font-medium">{g.email}</span>
-        <span className="chip">
+        <span className={`badge badge-dot fn-num ${tone}`}>
           {GOOGLE_STATUS_LABEL[g.status]}
-          {g.lastSyncedAt ? ` · ${new Date(g.lastSyncedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""}
+          {g.lastSyncedAt ? `, ${new Date(g.lastSyncedAt).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}` : ""}
         </span>
       </div>
-      <p className="text-xs leading-relaxed text-[var(--muted)]">
+      <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
         Syncing to a private app folder in your Google Drive. Changes sync automatically a few seconds after you edit, every couple of minutes,
         and whenever you come back to the app.
       </p>
-      {g.error && <p className="text-xs text-[var(--danger)]">{g.error}</p>}
+      {g.error && <p className="text-[13px] text-[var(--danger)]" role="alert">{g.error}</p>}
       <div className="flex flex-wrap gap-2">
-        <button className="flex items-center gap-1.5 rounded-md border border-[var(--line)] px-3 py-1.5 hover:bg-[var(--hover)]" onClick={g.syncNow}>
-          <Icon name="repeat" size={14} /> Sync now
+        <button className="btn btn-secondary max-md:h-11" onClick={g.syncNow}>
+          <Icon name="repeat" size={15} /> Sync now
         </button>
-        <button className="rounded-md border border-[var(--line)] px-3 py-1.5 hover:bg-[var(--hover)]" onClick={() => g.disconnect(false)}>
+        <button className="btn btn-secondary max-md:h-11" onClick={() => g.disconnect(false)}>
           Disconnect
         </button>
-        <button className="rounded-md px-3 py-1.5 text-[var(--danger)] hover:bg-[var(--hover)]" onClick={() => setConfirmDelete(true)}>
+        <button className="btn btn-danger max-md:h-11" onClick={() => setConfirmDelete(true)}>
           Delete Drive copy
         </button>
       </div>
@@ -316,10 +318,10 @@ export function GoogleSyncPanel() {
         onConfirm={() => g.disconnect(true)}
       >
         <p>
-          This permanently deletes the copy of your notes, tasks and spending stored in <strong>{g.email}</strong>&apos;s Google Drive, and
+          This permanently deletes the copy of your notes, tasks and spending stored in <strong className="font-medium">{g.email}</strong>&apos;s Google Drive, and
           disconnects Google on this device.
         </p>
-        <p className="text-[var(--muted)]">
+        <p className="text-[var(--text-secondary)]">
           Data on this device is kept. Other devices keep their data too, but will stop syncing until they connect again.
         </p>
       </TypeToConfirm>

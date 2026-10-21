@@ -180,6 +180,26 @@ export interface ChatResponse {
   demo?: boolean;
   /** The assistant declined (out of scope, or needs the user's own key): nothing worth saving. */
   refused?: boolean;
+  /** The model that wrote the reply, when the provider says (OpenRouter can fall back to another one). */
+  model?: string;
+}
+
+/** What a numbered source is: a note, a quick note, a task, a transaction or a budget. */
+export type SourceKind = "note" | "quick" | "todo" | "transaction" | "budget";
+export const SOURCE_KINDS: readonly SourceKind[] = ["note", "quick", "todo", "transaction", "budget"];
+
+/**
+ * One of the user's own items picked for a question, numbered so the answer can cite it
+ * as [n]. `title` and `detail` are what the model reads; `id` and `date` stay in the browser.
+ */
+export interface AnswerSource {
+  n: number;
+  kind: SourceKind;
+  id: string;
+  title: string;
+  detail: string;
+  /** YYYY-MM-DD: the transaction's day, the task's due day, the note's last edit. */
+  date?: string;
 }
 
 export interface CaptureResult {
@@ -201,6 +221,8 @@ export interface ClientContext {
   transactions: { merchant: string; amount: number; category: string; date: string }[];
   budgets?: Partial<Record<ExpenseCategory, number>>;
   categories?: string[];
+  /** Numbered items from the user's data picked for a question; the reply cites them as [n]. */
+  sources?: { n: number; kind: SourceKind; title: string; detail: string }[];
 }
 
 export interface BriefInput {

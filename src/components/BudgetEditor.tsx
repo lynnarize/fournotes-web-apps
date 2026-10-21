@@ -18,25 +18,34 @@ export default function BudgetEditor() {
 
   return (
     <div className="space-y-3 text-sm">
-      <p className="text-xs leading-relaxed text-[var(--muted)]">
-        Set a monthly limit for each category in {cur}. Type amounts like <b>1.5M</b> or <b>600k</b>. Leave a field empty for no budget.
+      <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
+        Set a monthly limit for each category in {cur}. Type amounts like <span className="font-medium text-[var(--foreground)]">1.5M</span> or{" "}
+        <span className="font-medium text-[var(--foreground)]">600k</span>. Leave a field empty for no budget.
       </p>
-      <ul className="divide-y divide-[var(--line)]">
-        {budgetable.map((c) => {
+      <ul className="flex flex-col">
+        {budgetable.map((c, i) => {
           const limit = settings.budgets[c] ?? 0;
           const used = spent[c] ?? 0;
           const ratio = limit ? used / limit : 0;
-          const color = ratio >= 1 ? "var(--danger)" : ratio >= 0.8 ? "#d9730d" : "var(--ok)";
+          const tone = ratio >= 1 ? "danger" : ratio >= 0.8 ? "warning" : undefined;
           return (
-            <li key={c} className="flex items-center gap-3 py-2.5">
+            <li key={c} className={`flex items-center gap-3 py-3 ${i ? "border-t border-[var(--border-subtle)]" : ""}`}>
               <div className="min-w-0 flex-1">
-                <div className="font-medium">{c}</div>
-                <div className="text-xs text-[var(--muted)]">
-                  {formatMoney(used, cur, true)} spent this month{limit ? ` · ${Math.round(ratio * 100)}% of budget` : ""}
+                <div className="truncate">{c}</div>
+                <div className={`fn-num text-xs ${tone === "danger" ? "text-[var(--danger)]" : tone === "warning" ? "text-[var(--warning)]" : "text-[var(--text-muted)]"}`}>
+                  {formatMoney(used, cur, true)} spent this month{limit ? `, ${Math.round(ratio * 100)}% of the budget${tone === "danger" ? " (over)" : ""}` : ""}
                 </div>
                 {limit > 0 && (
-                  <div className="mt-1.5 h-1 rounded-full bg-[var(--hover)]">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, ratio * 100)}%`, background: color }} />
+                  <div
+                    role="meter"
+                    aria-label={`${c} budget used`}
+                    aria-valuemin={0}
+                    aria-valuemax={limit}
+                    aria-valuenow={Math.min(used, limit)}
+                    className="meter mt-2"
+                    data-tone={tone}
+                  >
+                    <span style={{ width: `${Math.min(100, ratio * 100)}%` }} />
                   </div>
                 )}
               </div>
@@ -52,15 +61,15 @@ export default function BudgetEditor() {
                   if ((amount ?? 0) !== limit) setBudget(c, amount);
                 }}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                className="h-9 w-28 shrink-0 rounded-md bg-[var(--hover)] px-2.5 text-right tabular-nums outline-none placeholder:text-[var(--faint)] focus:ring-1 focus:ring-[var(--accent)] sm:w-32"
+                className="field fn-num w-28 shrink-0 text-right sm:w-32 max-md:h-11"
               />
             </li>
           );
         })}
       </ul>
-      <div className="flex items-center justify-between border-t border-[var(--line)] pt-3">
-        <span className="text-[var(--muted)]">Total monthly budget</span>
-        <span className="font-semibold tabular-nums">{formatMoney(total, cur)}</span>
+      <div className="flex items-center justify-between border-t border-[var(--border)] pt-3">
+        <span className="text-[var(--text-secondary)]">Total monthly budget</span>
+        <span className="fn-num font-medium">{formatMoney(total, cur)}</span>
       </div>
     </div>
   );

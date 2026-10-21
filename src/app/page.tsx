@@ -13,7 +13,7 @@ import Onboarding from "@/components/Onboarding";
 import PwaSetup from "@/components/PwaSetup";
 import SettingsModal from "@/components/SettingsModal";
 import { revealSettingsSection } from "@/components/SettingsSection";
-import Sidebar from "@/components/Sidebar";
+import Sidebar, { ChevronsUpDown, TABS } from "@/components/Sidebar";
 import SampleBanner from "@/components/SampleData";
 import TodayView from "@/components/TodayView";
 import TodoView from "@/components/TodoView";
@@ -57,7 +57,7 @@ function Shell() {
   // that fits the window; the other tabs scroll the page.
   const wide = tab === "notes";
   const fits = tab === "notes" || tab === "today";
-  // Phones: the header stays on top; it gets a border once the page scrolls under it.
+  // Phones: the header stays on top; it gets a hairline once the page scrolls under it.
   const [scrolled, setScrolled] = useState(false);
 
   // Deep links from the manifest shortcuts: /?tab=finance
@@ -71,11 +71,17 @@ function Shell() {
     setTab(f.kind === "sticky" ? "today" : f.kind === "note" ? "notes" : f.kind === "todo" ? "todo" : "finance");
   });
 
+  // ⌘K / Ctrl+K: search and quick add. ⌘, / Ctrl+,: Settings.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPalette((p) => !p);
+      } else if (e.key === ",") {
+        e.preventDefault();
+        setPalette(false);
+        setSettings(true);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -87,13 +93,14 @@ function Shell() {
     if (section) revealSettingsSection(section);
     setMenu(false);
     setSettings(true);
+    // Every section is always laid out in Settings, so it only has to be found and scrolled to.
     if (field) {
       scrollToId(`settings-field-${field}`, "center", (el) => {
         (el.querySelector<HTMLElement>("input") ?? el.querySelector<HTMLElement>("select"))?.focus({ preventScroll: true });
         return true;
       });
     } else if (section) {
-      scrollToId(`settings-${section}`, "start", (el) => el.querySelector("[aria-expanded=true]") !== null);
+      scrollToId(`settings-${section}`, "start");
     }
   });
   const closePalette = useCallback(() => setPalette(false), []);
@@ -104,55 +111,63 @@ function Shell() {
   return (
     <AssistantProvider onFiled={setTab}>
       <BackgroundJobs />
-      <div className="app-root flex h-dvh flex-col overflow-hidden">
+      {/* --tabbar-space: how much of the bottom edge the phone tab bar takes (0 on larger screens),
+          for anything fixed to the bottom of the window. */}
+      <div className="app-root flex h-dvh flex-col overflow-hidden pt-[env(safe-area-inset-top)] [--tabbar-space:calc(env(safe-area-inset-bottom)+86px)] md:pt-0 md:[--tabbar-space:0px]">
         <PwaSetup />
         <SampleBanner />
         <div className="flex min-h-0 flex-1">
-          {/* Sidebar: fixed on desktop, drawer on mobile */}
-          <div className="hidden border-r border-[var(--line)] md:block">{sidebar()}</div>
+          {/* Sidebar: fixed on larger screens, a drawer behind the header's mark on phones */}
+          <div className="hidden md:block">{sidebar()}</div>
           {drawer.mounted && (
             <div className={`fixed inset-0 z-40 md:hidden ${menu ? "" : "pointer-events-none"}`}>
               <button className="fn-backdrop absolute inset-0 bg-black/30" data-state={drawer.state} onClick={() => setMenu(false)} aria-label="Close menu" tabIndex={-1} />
-              <div className="fn-drawer relative h-full w-fit shadow-[var(--shadow)]" data-state={drawer.state}>{sidebar(() => setMenu(false))}</div>
+              <div className="fn-drawer relative h-full w-fit shadow-[var(--shadow-floating)]" data-state={drawer.state}>{sidebar(() => setMenu(false))}</div>
             </div>
           )}
 
-          {/* Today sits on the setup's soft light; the other tabs are plain. */}
-          <main
-            className={`relative flex min-w-0 flex-1 flex-col overflow-y-auto transition-[background] duration-500 ${tab === "today" ? "fn-calm" : ""}`}
-            onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}
-          >
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-y-auto" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
+            {/* Phones: the mark (opens the menu: spaces, capture, voice, sync), search and settings. */}
             <header
-              className={`sticky top-0 z-30 flex items-center gap-1 px-2 pb-1.5 ${tab === "today" && !scrolled ? "bg-transparent" : "bg-[var(--bg)]"} pt-[calc(env(safe-area-inset-top)+6px)] transition-[border-color,box-shadow] md:hidden ${
-                scrolled ? "border-b border-[var(--line)] shadow-[0_1px_8px_rgba(0,0,0,0.06)]" : "border-b border-transparent"
+              className={`sticky top-0 z-30 flex h-[60px] shrink-0 items-center gap-1 border-b bg-[var(--background)] px-2 pt-2 transition-colors md:hidden ${
+                scrolled ? "border-[var(--border)]" : "border-transparent"
               }`}
             >
-              <button className="tap-target fn-press relative" onClick={() => setMenu(true)} aria-label={pulsing.length ? "Open menu (new items)" : "Open menu"} aria-expanded={menu}>
-                <svg className="fn-burger" data-open={menu} width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" aria-hidden>
-                  <line x1="4" y1="6" x2="20" y2="6" />
-                  <line x1="4" y1="12" x2="20" y2="12" />
-                  <line x1="4" y1="18" x2="20" y2="18" />
-                </svg>
-                {pulsing.length > 0 && <span className="fn-ping absolute right-2 top-2" aria-hidden />}
+              <button
+                type="button"
+                className="flex min-h-11 min-w-0 items-center gap-2 rounded-[22px] pl-2 pr-2.5 transition-colors hover:bg-[var(--hover)]"
+                onClick={() => setMenu(true)}
+                aria-label={`Open menu, space ${spaceName ?? "Personal"}`}
+                aria-expanded={menu}
+              >
+                <Logo size={28} />
+                <span className="truncate text-base font-medium">Four Notes</span>
+                <ChevronsUpDown size={14} className="shrink-0 text-[var(--text-muted)]" />
               </button>
-              <button className="flex min-h-11 items-center gap-2 rounded-lg px-1.5 hover:bg-[var(--hover)]" onClick={() => setTab("today")} aria-label="Four Notes, go to Today">
-                <Logo size={34} />
-                <span className="text-lg font-bold tracking-tight">Four Notes</span>
+              <span className="flex-1" />
+              <button type="button" className="btn btn-plain btn-icon h-11 w-11" onClick={() => setPalette(true)} aria-label="Search or add">
+                <Icon name="search" size={20} />
               </button>
-              <button className="tap-target fn-press ml-auto" onClick={() => setPalette(true)} aria-label="Search"><Icon name="search" size={22} /></button>
-              <button className="tap-target fn-press" onClick={openSettings} aria-label="Settings"><Icon name="settings" size={22} /></button>
+              <button type="button" className="btn btn-plain btn-icon h-11 w-11" onClick={openSettings} aria-label="Settings">
+                <Icon name="settings" size={20} />
+              </button>
             </header>
-
 
             {/* Every tab: same width, same side padding, same title position. */}
             <div key={tab} className={`fn-rise mx-auto w-full flex-1 px-4 md:px-8 ${fits ? "flex min-h-0 flex-col" : "pb-24"} ${wide ? "" : "max-w-[1500px]"}`}>
-              {/* Today's big greeting stands in for the title, and Notes has its own in the list. */}
-              <h1 className={`fn-serif mb-5 mt-5 flex shrink-0 items-center gap-3 text-[2.1rem] leading-tight md:mt-7 ${fits ? "sr-only" : ""}`}>
+              {/* Today's greeting stands in for the title, and Notes has its own in the list. */}
+              <h1 className={`fn-display mb-5 mt-5 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 text-[34px] md:mb-6 md:mt-8 md:text-[36px] ${fits ? "sr-only" : ""}`}>
                 {TITLES[tab]}
-                {spaceName && <span className="chip self-center text-sm font-normal"><Icon name="users" size={12} />{spaceName}</span>}
+                {tab === "finance" && <span className="badge badge-info self-center font-[family-name:var(--font-body)] tracking-normal">Beta</span>}
+                {spaceName && (
+                  <span className="badge self-center font-[family-name:var(--font-body)] tracking-normal">
+                    <Icon name="users" size={12} />
+                    {spaceName}
+                  </span>
+                )}
               </h1>
               {!ready ? (
-                <div className="text-sm text-[var(--muted)]">Loading…</div>
+                <div className="text-sm text-[var(--text-muted)]">Loading…</div>
               ) : tab === "today" ? (
                 <TodayView setTab={setTab} />
               ) : tab === "notes" ? (
@@ -168,6 +183,34 @@ function Shell() {
             {tab !== "today" && <ChatDock minimized />}
           </main>
         </div>
+
+        {/* Phones: the four places in a floating bar along the bottom. */}
+        <nav aria-label="Main" className="shrink-0 px-3 pb-[calc(env(safe-area-inset-bottom)+16px)] md:hidden">
+          <div className="flex rounded-[var(--radius-surface)] border border-[var(--border)] bg-[var(--surface)] p-1.5">
+            {TABS.map((t) => {
+              const on = tab === t.id;
+              const pulse = pulsing.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setTab(t.id)}
+                  aria-current={on ? "page" : undefined}
+                  className={`fn-press relative flex h-14 flex-1 flex-col items-center justify-center gap-0.5 rounded-[28px] text-[11px] transition-colors ${
+                    on ? "bg-[var(--accent-subtle)] font-medium text-[var(--foreground)]" : "text-[var(--text-secondary)]"
+                  }`}
+                >
+                  <span className="relative">
+                    <Icon name={t.icon} size={22} className={on ? "text-[var(--accent)]" : ""} />
+                    {pulse && <span className="fn-ping absolute -right-1 -top-0.5" aria-hidden />}
+                  </span>
+                  {t.label}
+                  {pulse && <span className="sr-only">, new from the assistant</span>}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
       </div>
       <Onboarding />
       <CommandPalette open={palette} onClose={closePalette} setTab={setTab} onSettings={openSettings} />

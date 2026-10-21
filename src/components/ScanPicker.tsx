@@ -46,13 +46,13 @@ export default function ScanPicker({ onFile, children }: { onFile: (file: File) 
   };
 
   const option = (icon: string, title: string, hint: string, onClick: () => void) => (
-    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left hover:bg-[var(--hover)] active:bg-[var(--hover)]">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[var(--hover)] text-[var(--text)]">
-        <Icon name={icon} size={22} />
+    <button type="button" onClick={onClick} className="flex w-full items-center gap-3 rounded-[18px] p-2.5 text-left transition-colors hover:bg-[var(--hover)] active:bg-[var(--hover)]">
+      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px] bg-[var(--surface-muted)] text-[var(--text-secondary)]">
+        <Icon name={icon} size={20} />
       </span>
       <span className="min-w-0">
         <span className="block text-[15px] font-medium">{title}</span>
-        <span className="block text-xs text-[var(--muted)]">{hint}</span>
+        <span className="block text-[13px] text-[var(--text-muted)]">{hint}</span>
       </span>
     </button>
   );
@@ -65,20 +65,20 @@ export default function ScanPicker({ onFile, children }: { onFile: (file: File) 
       {presence.mounted && typeof document !== "undefined" &&
         createPortal(
           <div className={`no-print fixed inset-0 z-[70] flex items-end justify-center ${sheet ? "" : "pointer-events-none"}`}>
-            <div className="fn-backdrop absolute inset-0 bg-black/40" data-state={presence.state} onClick={() => setSheet(false)} aria-hidden />
+            <div className="fn-backdrop absolute inset-0 bg-black/30" data-state={presence.state} onClick={() => setSheet(false)} aria-hidden />
             <div
               role="dialog"
               aria-modal
-              aria-label="Scan"
+              aria-labelledby="scan-picker-title"
               data-state={presence.state}
-              className="fn-sheet relative w-full max-w-md rounded-t-2xl border border-b-0 border-[var(--line)] bg-[var(--bg)] px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-2 shadow-[var(--shadow)]"
+              className="fn-sheet relative w-full max-w-md rounded-t-[var(--radius-panel)] border border-b-0 border-[var(--border)] bg-[var(--surface)] px-2 pb-[calc(env(safe-area-inset-bottom)+8px)] pt-2 shadow-[var(--shadow-floating)]"
             >
-              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--line)]" />
-              <p className="px-3 pb-1 text-sm font-semibold">Scan</p>
-              <p className="px-3 pb-2 text-xs text-[var(--muted)]">A receipt, a handwritten note, or an e-wallet screenshot</p>
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border-strong)]" aria-hidden />
+              <h2 id="scan-picker-title" className="px-3 text-[15px] font-medium">Scan</h2>
+              <p className="px-3 pb-3 pt-0.5 text-[13px] text-[var(--text-secondary)]">A receipt, a handwritten note, or an e-wallet screenshot</p>
               {option("camera", "Take a photo", "Open the camera", () => choose(cameraRef.current))}
               {option("image", "Choose from files", "Gallery, photos or file manager", () => choose(filesRef.current))}
-              <button type="button" onClick={() => setSheet(false)} className="mt-1 w-full rounded-xl py-3 text-[15px] font-medium text-[var(--muted)] hover:bg-[var(--hover)]">
+              <button type="button" onClick={() => setSheet(false)} className="btn btn-plain btn-lg mt-1 w-full">
                 Cancel
               </button>
             </div>

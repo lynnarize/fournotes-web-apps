@@ -44,8 +44,11 @@ export default function PwaSetup() {
 
   if (online) return null;
   return (
-    <div className="no-print flex items-center justify-center gap-2 bg-[var(--sticky-yellow)] px-4 py-1.5 text-xs" role="status">
-      <Icon name="wifiOff" size={13} />
+    <div
+      className="no-print flex min-h-9 items-center justify-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--warning-subtle)] px-4 py-1.5 text-[13px] text-[var(--foreground)]"
+      role="status"
+    >
+      <Icon name="wifiOff" size={14} className="shrink-0 text-[var(--warning)]" />
       Offline. Everything you add is still saved on this device; AI features resume when you reconnect.
     </div>
   );

@@ -32,7 +32,7 @@ export default function BackgroundJobs() {
       for (const t of alive(all.todos)) {
         if (t.done || t.reminded || !t.remindAt || new Date(t.remindAt).getTime() > now) continue;
         updateTodo(t.id, { reminded: true });
-        toast(`⏰ Reminder: ${t.title}`);
+        toast(`Reminder: ${t.title}`);
         notify("Four Notes reminder", t.title, t.id);
       }
     };
@@ -59,7 +59,7 @@ export default function BackgroundJobs() {
       .monthlySummary(prev, cur, txs.map((t) => ({ merchant: t.merchant, amount: baseAmount(t, cur), category: t.category, date: t.date })))
       .then(({ text }) => {
         saveSummary({ month: prev, total, currency: cur, byCategory: {}, text, createdAt: new Date().toISOString() });
-        toast(`📊 Your ${prev} spending review is ready in Finance`);
+        toast(`Your ${d.toLocaleDateString("en-US", { month: "long" })} spending review is ready in Finance`);
       })
       .catch(() => {});
   }, [store.ready, toast]);

@@ -1,171 +1,163 @@
 "use client";
-// The assistant, laid out as the macOS app has it (Views/ChatDock.swift):
-//   hero       Today's composer, in the middle of the page, like a chat app's home.
-//              The conversation grows up out of the input, over the page.
-//   minimized  Every other tab: an "Ask Four Notes" pill in the corner. One click
-//              opens the same composer, narrower, in that corner; a click anywhere
-//              else folds it away again. Phones get it as a sheet along the bottom.
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { useAiRoute } from "@/lib/aiRoute";
+// Where the assistant lives on screen:
+//   hero       Today's composer, under the brief (docked above the tab bar on phones),
+//              with a few suggestions. Sending opens the conversation in the panel.
+//   minimized  Every other tab: an "Ask Four Notes" pill in the corner that opens it.
+// The panel floats at the bottom right on larger screens (a sheet on phones): the thread
+// and a composer. "Open as a full page" spreads the same thread over the whole window.
+import { useEffect, useId, useRef, useState } from "react";
 import { useBackDismiss } from "@/lib/backstack";
 import { markFiled } from "@/lib/highlight";
-import { showChange, useOpenAssistant } from "@/lib/nav";
+import { openItem, showChange, useOpenAssistant, type FocusKind } from "@/lib/nav";
 import type { ChangeLink } from "@/lib/store";
-import { canSaveAsNote, useAssistant, type UIMessage } from "./assistant";
-import Markdown from "./Markdown";
-import ModelMenu from "./ModelMenu";
-import { Dropdown, MenuItem, MenuSep } from "./notes/Dropdown";
-import ScanPicker from "./ScanPicker";
+import type { AnswerSource, SourceKind } from "@/lib/types";
+import { useAssistant } from "./assistant";
+import Composer, { BusyRing, type ComposerHandle } from "./assistant/Composer";
+import FullPage from "./assistant/FullPage";
+import { Glyph, type GlyphName } from "./assistant/icons";
+import { Thread, type ThreadHandlers } from "./assistant/Thread";
+import { ModelMark } from "./ModelMenu";
 import SplitEditor from "./SplitEditor";
-import { Icon, Modal, useToast } from "./ui";
+import { Modal } from "./ui";
 
-const SUGGESTIONS = [
-  "Remind me to pay rent of 2.5M every month on the 5th at 9am",
-  "Spent 45k on lunch at Warteg, split with Andi",
-  "Set my food budget to 1.5M a month",
-  "Where did I write about the Bali trip?",
-  "What did I spend most on this month?",
+const PLACEHOLDER = "Ask, or add a note, task or expense";
+/**
+ * Phones: just above the tab bar. The shell sets --tabbar-space on .app-root (the bar's
+ * height, safe area included; 0 from md up), so nothing here adds the safe area again.
+ */
+const ABOVE_TABBAR = "bottom-[calc(var(--tabbar-space,0px)+10px)]";
+
+/** Things to start with on Today: two fill in the start of a request, one asks right away. */
+const STARTERS: { icon: GlyphName; title: string; text: string; send?: boolean }[] = [
+  { icon: "pen", title: "Write a note", text: "Write a note about " },
+  { icon: "receipt", title: "Log spending", text: "Spent " },
+  { icon: "calendarCheck", title: "Plan my day", text: "What should I focus on today?", send: true },
 ];
 
-/** Things to start with on Today, each filling in the start of a request. */
-const STARTERS = [
-  { icon: "noteAdd", title: "Write", text: "Write a note about " },
-  { icon: "bell", title: "Remind", text: "Remind me to " },
-  { icon: "wallet", title: "Spent", text: "Spent " },
-  { icon: "search", title: "Find", text: "Where did I write about " },
-  { icon: "sparkle", title: "Plan my day", text: "What should I focus on today?" },
-];
+const OPEN_AS: Record<SourceKind, FocusKind> = { note: "note", quick: "note", todo: "todo", transaction: "transaction", budget: "budget" };
 
-const VOICE_LABEL = { off: "", listening: "Listening…", thinking: "Thinking…", speaking: "Speaking…" } as const;
-const MAX_INPUT_HEIGHT = 200;
-const ROUND = "fn-press grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors disabled:opacity-40";
+function HeaderButton({ icon, label, onClick, disabled }: { icon: GlyphName; label: string; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} title={label}
+      className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-[var(--text-secondary)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--foreground)] disabled:opacity-40 md:h-9 md:w-9">
+      <Glyph name={icon} size={18} />
+    </button>
+  );
+}
 
 export default function ChatDock({ minimized = false, hero = false }: { minimized?: boolean; hero?: boolean }) {
-  const { messages, busy, recording, liveTranscript, voice, queued, send, scan, startRecording, stopRecording, toggleVoice, clear } = useAssistant();
-  const toast = useToast();
-  const [text, setText] = useState("");
-  /** The conversation is showing over the page. */
+  const { messages, busy, recording, voice, queued, send, clear } = useAssistant();
+  /** The panel (the thread and a composer) is showing. */
   const [open, setOpen] = useState(false);
-  /** Minimized mode only: the composer is showing instead of the pill. */
-  const [expanded, setExpanded] = useState(false);
+  /** The thread is spread over the whole window. */
+  const [full, setFull] = useState(false);
   const [unread, setUnread] = useState(false);
   const [splitTx, setSplitTx] = useState<string | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const heroRef = useRef<ComposerHandle>(null);
+  const panelRef = useRef<ComposerHandle>(null);
+  const heroEl = useRef<HTMLDivElement>(null);
+  const panelEl = useRef<HTMLElement>(null);
+  const titleId = useId();
 
-  const collapse = () => {
-    inputRef.current?.blur();
-    setExpanded(false);
-    setOpen(false);
-  };
   const reveal = (focus = false) => {
-    setExpanded(true);
     setOpen(true);
     setUnread(false);
-    if (focus) setTimeout(() => inputRef.current?.focus(), 80);
+    if (focus) setTimeout(() => panelRef.current?.focus(), 80);
   };
-  // Back closes the conversation (Today) or folds the composer back into the pill.
-  useBackDismiss(minimized ? expanded : open, () => (minimized ? collapse() : setOpen(false)));
+  const collapse = () => {
+    setFull(false);
+    setOpen(false);
+  };
 
-  // New messages: show the conversation. While folded away, a reply only marks the pill.
+  // Back closes the full page first (back to the panel), then the panel.
+  useBackDismiss(open || full, () => {
+    if (full) {
+      setFull(false);
+      return open;
+    }
+    setOpen(false);
+  });
+
+  // New messages: show the conversation. On other tabs, a reply that arrives while it's
+  // folded away only marks the pill.
   const seen = useRef(messages.length);
   useEffect(() => {
     if (messages.length > seen.current) {
       const last = messages[messages.length - 1];
-      if (!minimized || expanded || last?.role === "user") reveal();
+      if (!minimized || open || full || last?.role === "user") reveal();
       else setUnread(true);
     }
     seen.current = messages.length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length]);
 
-  // Recording or voice mode shows their live status, so the composer has to be open.
+  // Recording and voice mode show their live status in a composer, so one has to be in view.
   useEffect(() => {
     if (minimized && (recording || voice !== "off")) reveal();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recording, voice]);
 
-  // "Ask the assistant…" from elsewhere: the request is filled in, not sent — it's the user's to finish.
+  // "Ask the assistant…" from elsewhere: the request is filled in, not sent. It's the user's to finish.
   useOpenAssistant((prefill) => {
+    if (hero && !open && !full) {
+      if (prefill !== undefined) heroRef.current?.fill(prefill);
+      else heroRef.current?.focus();
+      return;
+    }
+    setFull(false);
     reveal();
-    if (prefill !== undefined) setText(prefill);
-    setTimeout(() => {
-      const el = inputRef.current;
-      if (!el) return;
-      el.focus();
-      el.setSelectionRange(el.value.length, el.value.length);
-    }, 80);
+    setTimeout(() => (prefill !== undefined ? panelRef.current?.fill(prefill) : panelRef.current?.focus()), 80);
   });
 
-  useEffect(() => {
-    listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, busy, open]);
-
-  // Opened in the corner, a click anywhere else folds it away (the click still goes where it was aimed).
-  // Menus and dialogs the composer opens live elsewhere in the page, and aren't "outside".
-  useEffect(() => {
-    if (!minimized || !expanded) return;
-    const onDown = (e: PointerEvent) => {
-      const t = e.target as Element;
-      if (panelRef.current?.contains(t) || t.closest?.("[role=menu], [role=dialog]")) return;
-      if (recording || voice !== "off") return;
-      collapse();
-    };
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [minimized, expanded, recording, voice]);
-
-  // Grow the text box with its content, up to a limit, then scroll inside it.
-  useLayoutEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
-    el.style.overflowY = el.scrollHeight > MAX_INPUT_HEIGHT ? "auto" : "hidden";
-  }, [text, expanded]);
-
-  // "/" anywhere outside a text field opens the assistant with the cursor in it.
+  // "/" anywhere outside a text field puts the cursor in the assistant.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !/INPUT|TEXTAREA|SELECT/.test(el.tagName) && !el.isContentEditable) {
-        e.preventDefault();
-        reveal(true);
-      }
+      if (e.key !== "/" || e.metaKey || e.ctrlKey || /INPUT|TEXTAREA|SELECT/.test(el.tagName) || el.isContentEditable) return;
+      e.preventDefault();
+      if (hero && !open && !full) heroRef.current?.focus();
+      else if (!full) reveal(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [hero, open, full]);
 
-  // Jump to what the assistant changed, folding the conversation so the item isn't hidden behind it.
-  const jump = (link: ChangeLink, all: ChangeLink[] = []) => {
-    if (!link) return;
-    markFiled(all.filter((l): l is NonNullable<ChangeLink> => Boolean(l)).map((l) => l.id));
-    if (minimized) collapse();
-    else setOpen(false);
-    inputRef.current?.blur();
-    showChange(link);
+  // A click elsewhere folds the panel away (the click still goes where it was aimed). Menus and
+  // dialogs it opens live elsewhere in the page and aren't "elsewhere"; nor is Today's composer.
+  useEffect(() => {
+    if (!open || full) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element;
+      if (panelEl.current?.contains(t) || heroEl.current?.contains(t) || t.closest?.("[role=menu], [role=dialog]")) return;
+      if (recording || voice !== "off") return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open, full, recording, voice]);
+
+  // Going to something in the app folds the assistant away, so the item isn't hidden behind it.
+  const handlers: ThreadHandlers = {
+    jump: (link: ChangeLink, all: ChangeLink[]) => {
+      if (!link) return;
+      markFiled(all.filter((l): l is NonNullable<ChangeLink> => Boolean(l)).map((l) => l.id));
+      collapse();
+      showChange(link);
+    },
+    openSource: (s: AnswerSource) => {
+      collapse();
+      openItem(OPEN_AS[s.kind], s.id);
+    },
+    split: setSplitTx,
   };
 
-  const submit = (value = text) => {
-    const t = value.trim();
-    if (!t || busy) return;
-    setText("");
-    setOpen(true);
-    send(t);
+  const submit = (text: string) => {
+    send(text);
   };
-
-  const pasteClipboard = async () => {
-    try {
-      const clip = await navigator.clipboard.readText();
-      if (clip) setText(clip.slice(0, 2000));
-      inputRef.current?.focus();
-    } catch {
-      toast("The browser didn't allow reading the clipboard. Paste with ⌘V / Ctrl+V instead.", "error");
-    }
+  const starter = (text: string, now: boolean) => {
+    if (now) return submit(text);
+    panelRef.current?.fill(text);
   };
 
   const splitModal = (
@@ -174,307 +166,109 @@ export default function ChatDock({ minimized = false, hero = false }: { minimize
     </Modal>
   );
 
-  if (minimized && !expanded) {
+  const panel = open && (
+    <>
+      {/* Phones: the sheet dims the page behind it. */}
+      <div className="fn-backdrop no-print fixed inset-x-0 top-0 bottom-[var(--tabbar-space,0px)] z-[46] bg-black/30 md:hidden" data-state="open" onClick={() => setOpen(false)} aria-hidden />
+      <section
+        ref={panelEl}
+        role="dialog"
+        aria-labelledby={titleId}
+        data-state="open"
+        onKeyDown={(e) => { if (e.key === "Escape" && !document.querySelector("[role=menu]")) setOpen(false); }}
+        className={`no-print fn-sheet fn-corner fixed inset-x-2 z-[47] flex h-[min(880px,calc(100dvh-var(--tabbar-space,0px)-72px))] flex-col overflow-hidden rounded-[26px] border border-[var(--border)] bg-[var(--surface)] shadow-[var(--shadow-floating)] md:inset-x-auto md:bottom-5 md:right-6 md:h-[min(880px,calc(100dvh-40px))] md:w-[440px] ${ABOVE_TABBAR}`}
+      >
+        <header className="flex h-14 shrink-0 items-center gap-0.5 border-b border-[var(--border-subtle)] pl-[18px] pr-2.5">
+          <h2 id={titleId} className="min-w-0 flex-1 truncate text-[14px] font-medium">Assistant</h2>
+          {queued > 0 && (
+            <span className="badge mr-1">
+              <Glyph name="wifiOff" size={12} /> {queued} queued
+            </span>
+          )}
+          <HeaderButton icon="newChat" label="New chat" onClick={clear} disabled={!messages.length || !!busy} />
+          <HeaderButton icon="expand" label="Open as a full page" onClick={() => setFull(true)} />
+          <HeaderButton icon="x" label="Close the assistant" onClick={() => setOpen(false)} />
+        </header>
+        <Thread handlers={handlers} onStarter={starter} />
+        <div className="shrink-0 px-3 pb-3 pt-1">
+          <Composer handle={panelRef} placeholder={PLACEHOLDER} onSend={submit} />
+        </div>
+      </section>
+    </>
+  );
+
+  const fullPage = full && (
+    <FullPage
+      handlers={handlers}
+      onShrink={() => { setFull(false); reveal(); }}
+      onClose={collapse}
+      onNewThread={() => { clear(); collapse(); if (hero) heroRef.current?.focus(); }}
+    />
+  );
+
+  if (hero) {
+    const resume = messages.length > 0 && !open && !full;
     return (
       <>
-        <AskPill busy={busy} unread={unread} onClick={() => reveal(true)} />
+        {/* Phones: docked above the tab bar. Larger screens: in the page, under the brief. */}
+        <div ref={heroEl} className={`no-print fixed inset-x-3 z-[36] md:static md:z-auto ${ABOVE_TABBAR}`}>
+          {resume && (
+            <button type="button" onClick={() => reveal(true)} className="pill pill-sm mb-2 bg-[var(--surface)] shadow-[var(--shadow-floating)] md:hidden">
+              <Glyph name="message" size={16} /> Back to the conversation
+            </button>
+          )}
+          <Composer handle={heroRef} placeholder={PLACEHOLDER} onSend={submit} className="shadow-[var(--shadow-floating)] md:shadow-none" />
+        </div>
+        <div role="group" aria-label="Suggestions" className="no-print hidden flex-wrap gap-2 md:flex">
+          {STARTERS.map((s) => (
+            <button
+              key={s.title}
+              type="button"
+              className="pill disabled:opacity-50"
+              disabled={!!busy && s.send}
+              onClick={() => (s.send ? submit(s.text) : heroRef.current?.fill(s.text))}
+            >
+              <Glyph name={s.icon} size={16} /> {s.title}
+            </button>
+          ))}
+          {resume && (
+            <button type="button" className="pill" onClick={() => reveal(true)}>
+              <Glyph name="message" size={16} /> Back to the conversation
+            </button>
+          )}
+        </div>
+        {panel}
+        {fullPage}
         {splitModal}
       </>
     );
   }
 
-  const showsConversation = open && (messages.length > 0 || !!busy);
-  const sendDisabled = !text.trim() || !!busy;
-
-  const conversation = (
-    <div className="fn-rise overflow-hidden rounded-t-[20px] border border-b-0 border-[var(--line)] bg-[var(--panel)]">
-      <div className="flex items-center justify-between gap-2 py-1.5 pl-4 pr-2 text-sm text-[var(--muted)]">
-        <span className="flex items-center gap-1.5 font-medium">
-          <Icon name="sparkle" size={15} className="text-[var(--accent)]" /> Assistant
-          {queued > 0 && <span className="chip ml-1"><Icon name="wifiOff" size={11} />{queued} queued</span>}
-        </span>
-        <span className="flex items-center gap-1">
-          {messages.length > 0 && <button className="h-8 rounded-lg px-2.5 text-sm hover:bg-[var(--hover)]" onClick={clear}>Clear</button>}
-          <button className="fn-press grid h-8 w-8 place-items-center rounded-lg hover:bg-[var(--hover)]" onClick={() => (minimized ? collapse() : setOpen(false))} aria-label="Collapse chat">
-            <Icon name="x" size={15} />
-          </button>
-        </span>
-      </div>
-      <div
-        ref={listRef}
-        className={`scroll-thin space-y-3 overflow-y-auto px-3 pb-3 ${minimized ? "max-h-[min(60dvh,540px)]" : "max-h-[min(50dvh,420px)]"}`}
-        aria-live="polite"
-      >
-        {messages.map((m) => <MessageRow key={m.id} message={m} onJump={jump} onSplit={setSplitTx} />)}
-        {busy && <Thinking label={busy} />}
-      </div>
-    </div>
-  );
-
-  const composer = (
-    <div
-      ref={panelRef}
-      className={`pointer-events-auto relative w-full ${minimized ? "sm:w-[460px]" : "max-w-[720px]"}`}
-      onKeyDown={(e) => { if (e.key === "Escape" && minimized) collapse(); }}
-    >
-      {/* The conversation sits on top of the input, sharing its edge, over the page. */}
-      {showsConversation && <div className="absolute inset-x-0 bottom-full">{conversation}</div>}
-
-      <div
-        className={`overflow-hidden border border-[var(--line)] bg-[var(--panel)] shadow-[0_6px_28px_rgba(15,15,15,0.10)] transition-[border-radius] ${
-          showsConversation ? "rounded-b-[20px]" : "rounded-[20px]"
-        }`}
-      >
-        {(recording || voice !== "off") && (
-          <div className="fn-rise flex items-center gap-2 border-b border-[var(--line)] px-4 py-2.5 text-sm text-[var(--muted)]">
-            <span className={`shrink-0 font-medium ${recording ? "text-[var(--danger)]" : "text-[var(--accent)]"}`}>
-              {recording ? "● Recording" : `🎧 ${VOICE_LABEL[voice]}`}
-            </span>
-            <span className="min-w-0 flex-1 truncate">
-              {liveTranscript || (recording ? "Listening… press stop when you're done." : voice === "listening" ? "Say something, or “stop” to end." : "")}
-            </span>
-            {voice !== "off" && <button className="h-8 shrink-0 rounded-lg px-2.5 hover:bg-[var(--hover)]" onClick={toggleVoice}>End</button>}
-          </div>
-        )}
-
-        <textarea
-          ref={inputRef}
-          rows={minimized ? 1 : 2}
-          value={text}
-          onFocus={() => setOpen(true)}
-          onChange={(e) => setText(e.target.value)}
-          onPaste={(e) => {
-            const img = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
-            if (img) { e.preventDefault(); scan(img); }
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder={minimized ? "Ask or add anything…" : "How can I help you today?"}
-          aria-label="Message the assistant"
-          className={`input-plain block w-full resize-none px-[18px] pt-4 text-base leading-6 ${minimized ? "min-h-[40px]" : "min-h-[64px]"}`}
-        />
-
-        <div className="flex items-center gap-1.5 px-2.5 pb-2.5 pt-2">
-          <ScanPicker onFile={scan}>
-            {(pick) => (
-              <Dropdown
-                label="Add"
-                width={250}
-                chevron={false}
-                className={`${ROUND} text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)]`}
-                button={<Icon name="plus" size={19} />}
-              >
-                {(close) => (
-                  <>
-                    <MenuItem icon="scan" label="Scan a receipt or note…" onSelect={() => { close(); pick(); }} />
-                    <MenuItem icon={recording ? "stop" : "mic"} label={recording ? "Stop recording" : "Record a voice note"} onSelect={() => { close(); recording ? stopRecording() : startRecording(); }} />
-                    <MenuItem icon="clipboard" label="Paste from the clipboard" onSelect={() => { close(); pasteClipboard(); }} />
-                    <MenuSep />
-                    <MenuItem icon="wave" label={voice !== "off" ? "End voice mode" : "Voice mode (hands-free)"} onSelect={() => { close(); toggleVoice(); }} />
-                  </>
-                )}
-              </Dropdown>
-            )}
-          </ScanPicker>
-          {minimized && (
-            <button className={`${ROUND} hidden text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)] sm:grid`} onClick={collapse} aria-label="Hide the assistant" title="Hide the assistant">
-              <Icon name="chevronDown" size={17} />
-            </button>
-          )}
-          <span className="min-w-0 flex-1" />
-          <span className="min-w-0"><ModelMenu /></span>
-          <button
-            className={`${ROUND} ${recording ? "recording bg-[var(--danger)] text-white" : "text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)]"}`}
-            title={recording ? "Stop and summarize" : "Record a voice note"}
-            aria-label={recording ? "Stop recording" : "Record a voice note"}
-            onClick={recording ? stopRecording : startRecording}
-            disabled={(!!busy && !recording) || voice !== "off"}
-          >
-            <Icon name={recording ? "stop" : "mic"} size={18} />
-          </button>
-          <button
-            className={`${ROUND} ${sendDisabled ? "bg-[var(--hover)] text-[var(--faint)]" : "bg-[var(--text)] text-[var(--bg)]"}`}
-            onClick={() => submit()}
-            disabled={sendDisabled}
-            aria-label="Send"
-          >
-            <Icon name="send" size={16} />
-          </button>
-        </div>
-      </div>
-
-      {!minimized && (
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
-          {STARTERS.map((s) => (
-            <button
-              key={s.title}
-              disabled={!!busy}
-              onClick={() => {
-                if (s.text.endsWith("?")) return submit(s.text);
-                setText(s.text);
-                setTimeout(() => { const el = inputRef.current; el?.focus(); el?.setSelectionRange(s.text.length, s.text.length); }, 0);
-              }}
-              className="fn-press flex h-9 items-center gap-2 rounded-[10px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--panel)_75%,transparent)] px-3.5 text-sm text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)] disabled:opacity-50"
-            >
-              <Icon name={s.icon} size={15} /> {s.title}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <>
-      {minimized ? (
-        // The corner on larger screens; a sheet along the bottom on phones.
-        <div className="no-print fn-sheet fn-corner pointer-events-none fixed inset-x-0 bottom-0 z-[47] flex justify-end px-3 pb-[calc(env(safe-area-inset-bottom)+12px)] sm:inset-x-auto sm:right-6 sm:bottom-5 sm:px-0 sm:pb-0" data-state="open">
-          {composer}
-        </div>
-      ) : hero ? (
-        <div className="no-print relative z-20 flex w-full justify-center">{composer}</div>
-      ) : (
-        <div className="no-print sticky bottom-0 z-20 flex justify-center px-3 pb-3">{composer}</div>
-      )}
+      {minimized && !open && !full && <AskPill busy={busy} unread={unread} onClick={() => reveal(true)} />}
+      {panel}
+      {fullPage}
       {splitModal}
     </>
   );
 }
 
-/** One message: yours on the right, the assistant's across the panel, with what it filed and what it offers next. */
-function MessageRow({ message: m, onJump, onSplit }: { message: UIMessage; onJump: (l: ChangeLink, all: ChangeLink[]) => void; onSplit: (id: string) => void }) {
-  const { busy, saveAsNote, searchWeb, openWebSearch } = useAssistant();
-  const route = useAiRoute();
-  const user = m.role === "user";
-  const links = m.links ?? [];
-  const targets = links.filter(Boolean);
-  const offerSave = canSaveAsNote(m);
-  return (
-    <div className={`fn-rise flex ${user ? "justify-end pl-12" : ""}`}>
-      <div className={`min-w-0 break-words text-[15px] leading-relaxed ${user ? "max-w-[520px] rounded-xl bg-[var(--hover)] px-3 py-2" : "w-full px-0.5"} ${m.queued ? "opacity-60" : ""}`}>
-        {m.imageUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={m.imageUrl} alt="" className="mb-2 max-h-44 rounded-md" />
-        )}
-        <div className={m.error ? "text-[var(--danger)]" : ""}>
-          {user ? <span className="whitespace-pre-wrap">{m.content}</span> : <Markdown text={m.content} />}
-        </div>
-        {m.queued && <div className="mt-1 text-xs text-[var(--muted)]">Waiting for connection…</div>}
-
-        {m.filed && m.filed.length > 0 && (
-          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-            {m.filed.map((f, i) =>
-              links[i] ? (
-                <button key={i} className="chip fn-pop fn-press min-h-8 cursor-pointer hover:bg-[var(--line)] hover:text-[var(--text)]" style={{ animationDelay: `${i * 70}ms` }} onClick={() => onJump(links[i], links)} title="Show this">
-                  {f}
-                </button>
-              ) : (
-                <span key={i} className="chip fn-pop min-h-8" style={{ animationDelay: `${i * 70}ms` }}>{f}</span>
-              ),
-            )}
-            {targets.length > 0 && (
-              <button
-                className="fn-pop fn-nudge fn-press flex min-h-8 items-center gap-1 rounded-full bg-[var(--accent)] px-3 text-xs font-medium text-white"
-                style={{ animationDelay: `${m.filed.length * 70 + 80}ms` }}
-                onClick={() => onJump(targets[0], targets)}
-              >
-                {targets.length === 1 ? "Show" : `Show changes (${targets.length})`}
-                <Icon name="arrowRight" size={13} />
-              </button>
-            )}
-          </div>
-        )}
-
-        {m.sources && m.sources.length > 0 && (
-          <div className="mt-2 space-y-1">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--faint)]">Sources</div>
-            {m.sources.map((s) => {
-              let host = "";
-              try { host = new URL(s.url).host; } catch { /* keep empty */ }
-              return (
-                <a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer" title={s.url} className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--accent)] hover:underline">
-                  <Icon name="link" size={12} className="shrink-0" />
-                  <span className="truncate">{s.title}</span>
-                  <span className="shrink-0 text-[var(--faint)]">{host}</span>
-                </a>
-              );
-            })}
-          </div>
-        )}
-
-        {(offerSave || m.webTopic) && (
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            {offerSave && <Offer icon="noteAdd" title="Save as note" help="Save this reply to Notes exactly as it is" onClick={() => saveAsNote(m.id)} />}
-            {m.webTopic && route.canSearchWeb && (
-              <Offer icon="sparkle" title="Ideas from the web" help="Search the web and suggest ideas here. Sends this note to Claude." disabled={!!busy} onClick={() => searchWeb(m.webTopic!)} />
-            )}
-            {m.webTopic && <Offer icon="search" title="Search the web" help={`Open a search for “${m.webTopic.noteTitle}” in a new tab`} onClick={() => openWebSearch(m.webTopic!)} />}
-          </div>
-        )}
-
-        {m.splitTxId && (
-          <button className="fn-pop fn-press mt-2 flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-sm hover:bg-[var(--hover)]" onClick={() => onSplit(m.splitTxId!)}>
-            <Icon name="users" size={14} /> Split this bill with someone?
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** A next step offered under a reply: "Save as note", "Search the web". */
-function Offer({ icon, title, help, disabled, onClick }: { icon: string; title: string; help: string; disabled?: boolean; onClick: () => void }) {
-  return (
-    <button
-      className="fn-pop fn-press flex h-8 items-center gap-1.5 rounded-full border border-[var(--line)] px-3 text-[13px] font-medium text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)] disabled:opacity-50"
-      title={help}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <Icon name={icon} size={14} /> {title}
-    </button>
-  );
-}
-
-/** "The assistant is working": a sparkle that breathes, three dots rising in a wave, and the status with a light sweeping across it. */
-function Thinking({ label }: { label: string }) {
-  return (
-    <div className="fn-rise inline-flex items-center gap-2.5 rounded-full bg-[color-mix(in_srgb,var(--hover)_60%,transparent)] px-3 py-1.5 text-[15px]" role="status">
-      <span className="fn-breathe grid h-[26px] w-[26px] place-items-center rounded-full bg-[color-mix(in_srgb,var(--accent)_22%,transparent)] text-[var(--accent)]" aria-hidden>
-        <Icon name="sparkle" size={15} />
-      </span>
-      <span className="fn-shimmer text-[var(--muted)]">{label}</span>
-      <span className="flex items-center gap-1" aria-hidden>
-        {[0, 1, 2].map((i) => <span key={i} className="fn-dot h-[5px] w-[5px] rounded-full bg-[var(--accent)]" style={{ animationDelay: `${i * 140}ms` }} />)}
-      </span>
-    </div>
-  );
-}
-
-/**
- * The assistant folded into the corner. Alive without being busy: the sparkle breathes,
- * a soft light passes over the words now and then, and it lifts under the pointer.
- * All of it stops under "reduce motion".
- */
+/** The assistant folded into the corner (above the tab bar on phones). */
 function AskPill({ busy, unread, onClick }: { busy: string | null; unread: boolean; onClick: () => void }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="no-print fn-pop group fixed bottom-[calc(env(safe-area-inset-bottom)+16px)] right-4 z-[46] flex h-[42px] items-center gap-2 rounded-[20px] border border-[var(--line)] bg-[var(--panel)] pl-2.5 pr-4 shadow-[0_5px_18px_rgba(15,15,15,0.12)] transition-[transform,box-shadow,border-color] duration-200 hover:scale-[1.04] hover:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] hover:shadow-[0_8px_26px_rgba(15,15,15,0.16)] sm:right-6 sm:bottom-5"
-      style={{ transformOrigin: "bottom right" }}
-      aria-label={unread ? "Assistant (new reply)" : "Assistant"}
-      title="Assistant"
+      className={`no-print fn-pop fixed right-4 z-[46] flex h-11 items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] pl-3.5 pr-4 text-[14px] text-[var(--text-secondary)] shadow-[var(--shadow-floating)] transition-colors hover:text-[var(--foreground)] md:bottom-6 md:right-6 ${ABOVE_TABBAR}`}
+      aria-label={unread ? "Ask Four Notes, there's a new reply" : "Ask Four Notes"}
     >
-      <span className="relative grid h-6 w-6 place-items-center text-[var(--accent)]">
-        <Icon name="sparkle" size={15} className="fn-sway" />
-        {busy && <span className="absolute inset-0 animate-spin rounded-full border-[1.5px] border-transparent border-t-[var(--accent)] border-r-[var(--accent)]" aria-hidden />}
+      <span className="relative grid h-6 w-6 place-items-center text-[var(--foreground)]">
+        <ModelMark size={14} />
+        {busy && <BusyRing />}
       </span>
-      <span className="fn-shimmer max-w-[40vw] truncate text-[13.5px] text-[var(--muted)] group-hover:text-[var(--text)]">{busy ?? "Ask Four Notes"}</span>
-      {unread && <span className="fn-pop h-2 w-2 rounded-full bg-[var(--danger)]" aria-hidden />}
+      <span className={`max-w-[40vw] truncate ${busy ? "fn-shimmer" : ""}`}>{busy ? busy.replace(/…$/, "") : "Ask Four Notes"}</span>
+      {unread && <span className="h-2 w-2 rounded-full bg-[var(--accent)]" aria-hidden />}
     </button>
   );
 }

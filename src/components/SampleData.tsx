@@ -3,6 +3,8 @@
 import { useStore } from "@/lib/store";
 import { Icon, useToast } from "./ui";
 
+const BUTTON = "btn btn-secondary max-md:h-11";
+
 export function SampleDataButton({ label = "Explore with sample data", className }: { label?: string; className?: string }) {
   const { loadSamples, hasSamples } = useStore();
   const toast = useToast();
@@ -10,7 +12,7 @@ export function SampleDataButton({ label = "Explore with sample data", className
   return (
     <button
       type="button"
-      className={className ?? "fn-press rounded-lg border border-[var(--line)] px-3.5 py-1.5 text-sm hover:bg-[var(--hover)]"}
+      className={className ?? BUTTON}
       onClick={() => {
         loadSamples();
         toast("Sample data added. Remove it any time from the banner at the top or in Settings.");
@@ -28,7 +30,7 @@ export function RemoveSamplesButton({ className }: { className?: string }) {
   return (
     <button
       type="button"
-      className={className ?? "fn-press rounded-lg border border-[var(--line)] px-3.5 py-1.5 text-sm hover:bg-[var(--hover)]"}
+      className={className ?? BUTTON}
       onClick={() => {
         clearSamples();
         toast("Sample data removed. Only your own items are left.");
@@ -45,11 +47,14 @@ export default function SampleBanner() {
   const toast = useToast();
   if (!hasSamples) return null;
   return (
-    <div className="no-print flex items-center justify-center gap-2 bg-[var(--sticky-blue)] px-4 py-1.5 text-xs" role="status">
-      <Icon name="sparkle" size={13} />
-      <span>You&apos;re looking at sample data — it isn&apos;t saved to the cloud.</span>
+    <div
+      className="no-print flex min-h-11 items-center md:min-h-9 justify-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--surface-muted)] px-4 text-[13px] text-[var(--text-secondary)]"
+      role="status"
+    >
+      <Icon name="sparkle" size={14} className="shrink-0 text-[var(--accent)]" />
+      <span>You&apos;re looking at sample data. It isn&apos;t saved to the cloud.</span>
       <button
-        className="fn-press font-medium text-[var(--accent)]"
+        className="btn btn-sm btn-plain font-medium text-[var(--foreground)] max-md:h-11"
         onClick={() => {
           clearSamples();
           toast("Sample data removed.");

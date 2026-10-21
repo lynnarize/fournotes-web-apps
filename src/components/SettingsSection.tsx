@@ -1,78 +1,114 @@
 "use client";
-// Collapsible settings group. Open/closed state is remembered per section.
-import { useEffect, useId, useState, type ReactNode } from "react";
-import { Icon } from "./ui";
+// Settings building blocks, after Arc: a section with its heading, and inside it one
+// bordered group of rows. Each row has its label and description on the left and its
+// control on the right, with a hairline between rows.
+import { useId, type ReactNode } from "react";
 
-const STORE = "four-notes:settings-open";
-const EVT = "four-notes:settings-toggle-all";
+let pendingSection: string | null = null;
 
-const readOpen = (): Record<string, boolean> => {
-  try { return JSON.parse(localStorage.getItem(STORE) ?? "{}"); } catch { return {}; }
-};
-const persist = (id: string, open: boolean) => {
-  try { localStorage.setItem(STORE, JSON.stringify({ ...readOpen(), [id]: open })); } catch { /* storage blocked */ }
+/** Ask Settings to show this section when it opens (deep links such as "Add a key"). */
+export const revealSettingsSection = (id: string) => {
+  pendingSection = id;
 };
 
-/** Mark a section open before Settings mounts (it reads the saved state on mount). */
-export const revealSettingsSection = (id: string) => persist(id, true);
+/** Read once by Settings as it opens: the section a deep link asked for, if any. */
+export const takeRevealedSection = () => {
+  const id = pendingSection;
+  pendingSection = null;
+  return id;
+};
 
-export const setAllSettingsSections = (open: boolean) => window.dispatchEvent(new CustomEvent<boolean>(EVT, { detail: open }));
-
-export default function SettingsSection({ id, title, icon, summary, defaultOpen = false, children }: {
+export default function SettingsSection({ id, title, description, children }: {
   id: string;
   title: string;
-  icon: string;
-  summary?: ReactNode;
-  defaultOpen?: boolean;
+  description?: ReactNode;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const contentId = useId();
-
-  useEffect(() => {
-    const saved = readOpen();
-    if (id in saved) setOpen(saved[id]);
-    const onToggleAll = (e: Event) => {
-      const next = (e as CustomEvent<boolean>).detail;
-      setOpen(next);
-      persist(id, next);
-    };
-    window.addEventListener(EVT, onToggleAll);
-    return () => window.removeEventListener(EVT, onToggleAll);
-  }, [id]);
-
-  const toggle = () => {
-    setOpen((o) => {
-      persist(id, !o);
-      return !o;
-    });
-  };
-
+  const headingId = useId();
   return (
-    <section id={`settings-${id}`} className="scroll-mt-16 rounded-xl border border-[var(--line)]">
-      <h3>
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={open}
-          aria-controls={contentId}
-          className={`flex w-full items-center gap-3 px-3.5 py-3 text-left hover:bg-[var(--hover)] ${open ? "rounded-t-xl" : "rounded-xl"}`}
-        >
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--hover)] text-[var(--muted)]">
-            <Icon name={icon} size={16} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium text-[var(--text)]">{title}</span>
-            {summary && <span className="block truncate text-xs text-[var(--muted)]">{summary}</span>}
-          </span>
-          <Icon name="chevron" size={16} className={`shrink-0 text-[var(--muted)] transition-transform ${open ? "rotate-90" : ""}`} />
-        </button>
-      </h3>
-      {open && (
-        <div id={contentId} className="border-t border-[var(--line)] px-3.5 py-4">
-          {children}
-        </div>
-      )}
+    // Phones keep the title and the find field stuck on top: scroll the heading in below them.
+    <section id={`settings-${id}`} aria-labelledby={headingId} className="flex scroll-mt-[150px] flex-col gap-4 md:scroll-mt-6">
+      <div className="flex flex-col gap-1">
+        <h2 id={headingId} className="text-[22px] font-medium leading-tight tracking-[-0.02em]">{title}</h2>
+        {description && <p className="text-[var(--text-secondary)]">{description}</p>}
+      </div>
+      {children}
     </section>
+  );
+}
+
+/** One bordered group of rows. */
+export function SettingsGroup({ children, className = "", label }: { children: ReactNode; className?: string; label?: string }) {
+  return (
+    <div role={label ? "group" : undefined} aria-label={label} className={`rounded-[22px] border border-[var(--border)] ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+const ROW_EDGE = "border-b border-[var(--border-subtle)] last:border-b-0";
+
+/**
+ * A setting: label and description on the left, the control on the right. On narrow
+ * screens a wide control drops below the label. Pass `htmlFor` when the control is a
+ * field, or use the `labelId` it returns through `children` for aria-labelledby.
+ */
+export function SettingsRow({ label, description, children, htmlFor, id, wide = false, icon }: {
+  label: ReactNode;
+  description?: ReactNode;
+  children?: ReactNode | ((labelId: string) => ReactNode);
+  htmlFor?: string;
+  /** Element id, e.g. `settings-field-…` for deep links. */
+  id?: string;
+  /** The control takes the full width on phones (fields, button rows). */
+  wide?: boolean;
+  /** A small tile before the label. */
+  icon?: ReactNode;
+}) {
+  const labelId = useId();
+  const control = typeof children === "function" ? children(labelId) : children;
+  return (
+    <div id={id} className={`flex min-h-16 scroll-mt-20 flex-wrap items-center gap-x-4 gap-y-3 py-3 pl-5 pr-4 ${ROW_EDGE}`}>
+      {icon}
+      <div className="flex min-w-[min(100%,13rem)] flex-1 flex-col gap-0.5">
+        {htmlFor ? (
+          <label id={labelId} htmlFor={htmlFor} className="text-[var(--foreground)]">{label}</label>
+        ) : (
+          <span id={labelId} className="text-[var(--foreground)]">{label}</span>
+        )}
+        {description && <span className="text-[13px] leading-snug text-[var(--text-muted)]">{description}</span>}
+      </div>
+      {control != null && control !== false && (
+        <div className={`flex flex-wrap items-center gap-2 ${wide ? "w-full sm:w-auto" : "shrink-0"}`}>{control}</div>
+      )}
+    </div>
+  );
+}
+
+/** Free-form content inside a group (forms, explanations), with the same edges as a row. */
+export function SettingsBlock({ children, className = "", id }: { children: ReactNode; className?: string; id?: string }) {
+  return <div id={id} className={`scroll-mt-20 px-5 py-4 ${ROW_EDGE} ${className}`}>{children}</div>;
+}
+
+/** The round switch from the kit, as a real switch for assistive tech. */
+export function Switch({ checked, onChange, labelledBy, label, disabled }: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  labelledBy?: string;
+  label?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-labelledby={labelledBy}
+      aria-label={labelledBy ? undefined : label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      // The track is 26px tall; the invisible ::before brings the touch target to 44px.
+      className="switch before:absolute before:-inset-y-[9px] before:inset-x-0 before:content-[''] disabled:opacity-45"
+    />
   );
 }

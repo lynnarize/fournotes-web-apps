@@ -1,6 +1,6 @@
 "use client";
-// Notes: a list of note cards beside a large editor. On phones the list comes
-// first and a note opens full screen (back returns to the list).
+// Notes: a list of notes beside a large editor (the app's sidebar is the third pane).
+// On phones the list comes first and a note opens full screen (back returns to the list).
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { activeNoteHasText } from "@/lib/activeNote";
@@ -9,6 +9,7 @@ import { useFiledFlash } from "@/lib/highlight";
 import { usePresence } from "@/lib/hooks";
 import { scrollToId, useOpenItem } from "@/lib/nav";
 import { snippet } from "@/lib/noteText";
+import { isQuick } from "@/lib/quickNote";
 import { semanticNotes } from "@/lib/search";
 import { alive, useStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
@@ -19,62 +20,68 @@ import { Icon } from "./ui";
 // The editor (and its library) loads only when Notes is opened.
 const NoteEditor = dynamic(() => import("./notes/NoteEditor"), {
   ssr: false,
-  loading: () => <div className="flex-1 animate-pulse rounded-2xl border border-[var(--line)] bg-[var(--panel)]" aria-label="Loading editor" />,
+  loading: () => <div className="flex-1 animate-pulse bg-[var(--surface-muted)]" aria-label="Loading editor" />,
 });
 
 const SOURCE_LABEL: Record<Note["source"], string> = { manual: "", chat: "From chat", ocr: "Scanned", recording: "Recording", share: "Shared" };
-const SORTS = { updated: "Last edited", created: "Date created", title: "Title (A–Z)" } as const;
+const SORTS = { updated: "Last edited", created: "Date created", title: "Title, A to Z" } as const;
 type Sort = keyof typeof SORTS;
+type Show = "all" | "quick";
 const PREFS = "four-notes:notes-view";
 
-/** "19 APR", or "19 APR 2025" once it is not this year. */
+/** "Oct 15", or "Oct 15, 2025" once it is not this year. */
 function cardDate(iso: string) {
   const d = new Date(iso);
   const sameYear = d.getFullYear() === new Date().getFullYear();
-  return `${d.getDate()} ${d.toLocaleDateString("en-US", { month: "short" })}${sameYear ? "" : ` ${d.getFullYear()}`}`.toUpperCase();
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: sameYear ? undefined : "numeric" });
 }
 
-function NoteCard({ note, selected, linked, onOpen }: { note: Note; selected: boolean; linked: number; onOpen: () => void }) {
+/** The heading a note is listed under: this month, last month, then the month's name. */
+function monthGroup(iso: string, now = new Date()) {
+  const d = new Date(iso);
+  const back = (now.getFullYear() - d.getFullYear()) * 12 + now.getMonth() - d.getMonth();
+  if (back <= 0) return "This month";
+  if (back === 1) return "Last month";
+  return d.toLocaleDateString("en-US", { month: "long", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const tagLabel = (t: string) => t[0]?.toUpperCase() + t.slice(1);
+
+function NoteCard({ note, selected, tasks, expenses, onOpen }: { note: Note; selected: boolean; tasks: number; expenses: number; onOpen: () => void }) {
   const flash = useFiledFlash(note.id);
   const preview = snippet(note.content);
   const source = SOURCE_LABEL[note.source];
   const tags = note.tags;
+  const linked = [tasks ? plural(tasks, "task") : "", expenses ? plural(expenses, "expense") : ""].filter(Boolean).join(", ");
   return (
     <li id={`note-row-${note.id}`} className={flash ? "fn-flash" : ""}>
       <button
         onClick={onOpen}
         aria-current={selected ? "true" : undefined}
-        className={`fn-press flex w-full flex-col rounded-[10px] border px-4 py-4 text-left transition-colors ${
-          selected ? "border-[color-mix(in_srgb,var(--faint)_35%,transparent)] bg-[var(--hover)]" : "border-transparent bg-[var(--panel)] hover:bg-[var(--hover)]"
+        className={`fn-press flex w-full flex-col gap-1.5 rounded-[var(--radius-control)] px-3.5 py-3 text-left transition-colors ${
+          selected ? "bg-[var(--accent-subtle)]" : "hover:bg-[var(--hover)]"
         }`}
       >
-        <span className="flex items-center gap-1.5 text-[11px] font-medium tracking-[0.08em] text-[var(--faint)]">
-          <span>{cardDate(note.updatedAt)}</span>
-          {source && <><span>·</span><span className="truncate">{source.toUpperCase()}</span></>}
-          {linked > 0 && (
-            <span className="ml-auto flex shrink-0 items-center gap-0.5" title={`${linked} linked item${linked === 1 ? "" : "s"}`}>
-              <Icon name="link" size={11} />{linked}
-            </span>
-          )}
+        <span className="flex items-center gap-2">
+          <span className={`min-w-0 flex-1 truncate font-medium ${note.title ? "" : "text-[var(--text-muted)]"}`}>{note.title || "Untitled"}</span>
+          <span className="fn-num shrink-0 text-xs text-[var(--text-muted)]">{cardDate(note.updatedAt)}</span>
         </span>
-        <span className={`mt-2 line-clamp-1 text-[15px] ${selected ? "font-semibold text-[var(--text)]" : "font-medium text-[color-mix(in_srgb,var(--text)_78%,transparent)]"}`}>
-          {note.title || "Untitled"}
-        </span>
-        <span className={`mt-1.5 line-clamp-2 text-[13px] leading-relaxed ${selected ? "text-[var(--muted)]" : "text-[var(--faint)]"}`}>{preview || "No text yet"}</span>
-        {tags.length > 0 && (
-          <span className="mt-3.5 flex flex-wrap gap-1.5">
-            {tags.slice(0, 3).map((t) => <TagChip key={t}>{t[0]?.toUpperCase() + t.slice(1)}</TagChip>)}
-            {tags.length > 3 && <TagChip>+{tags.length - 3} more</TagChip>}
+        <span className="line-clamp-2 text-[13px] leading-normal text-[var(--text-secondary)]">{preview || "No text yet"}</span>
+        {(tags.length > 0 || linked || source) && (
+          <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-[var(--text-muted)]">
+            {tags.slice(0, 3).map((t) => (
+              <span key={t} className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-px">{tagLabel(t)}</span>
+            ))}
+            {tags.length > 3 && <span>+{tags.length - 3}</span>}
+            {linked && <span className="flex items-center gap-1"><Icon name="link" size={12} />{linked}</span>}
+            {source && <span>{source}</span>}
           </span>
         )}
       </button>
     </li>
   );
 }
-
-const TagChip = ({ children }: { children: React.ReactNode }) => (
-  <span className="flex h-6 items-center rounded-[5px] border border-[var(--line)] bg-[color-mix(in_srgb,var(--bg)_60%,transparent)] px-2 text-[11px] font-medium tracking-[0.03em] text-[var(--muted)]">{children}</span>
-);
 
 /** A note that was opened but never written in: no title, no text, no scan, nothing linked. */
 const isBlank = (n: Note, todos: { noteId?: string | null; deletedAt?: string | null }[], txs: { noteId?: string | null; deletedAt?: string | null }[]) =>
@@ -84,7 +91,7 @@ const isBlank = (n: Note, todos: { noteId?: string | null; deletedAt?: string | 
 export default function NotesView() {
   const { notes, todos, transactions, addNote, remove } = useStore();
   const [query, setQuery] = useState("");
-  const [searching, setSearching] = useState(false);
+  const [show, setShow] = useState<Show>("all");
   const [ranked, setRanked] = useState<{ q: string; ids: string[] } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("updated");
@@ -160,7 +167,7 @@ export default function NotesView() {
 
   useOpenItem("note", (f) => {
     setQuery("");
-    setSearching(false);
+    setShow("all");
     open(f.id);
     scrollToId(`note-row-${f.id}`, "nearest");
   });
@@ -176,7 +183,7 @@ export default function NotesView() {
   }, [query, notes]);
 
   const list = useMemo(() => {
-    const live = alive(notes);
+    const live = alive(notes).filter((n) => show === "all" || isQuick(n));
     const q = query.trim().toLowerCase();
     if (!q) {
       const by = {
@@ -192,17 +199,31 @@ export default function NotesView() {
     const out = ranked.ids.map((id) => byId.get(id)!).filter(Boolean);
     for (const n of substring) if (!out.includes(n)) out.push(n);
     return out;
-  }, [notes, query, ranked, sort]);
+  }, [notes, query, ranked, sort, show]);
 
   const liveCount = alive(notes).length;
+  const quickCount = alive(notes).filter(isQuick).length;
+  // Listed under month headings while sorted by date; a search or A to Z is one plain list.
+  const searched = query.trim().length > 0;
+  const groups = useMemo(() => {
+    if (searched || sort === "title") return [{ label: "", notes: list }];
+    const out: { label: string; notes: Note[] }[] = [];
+    for (const n of list) {
+      const label = monthGroup(sort === "created" ? n.createdAt : n.updatedAt);
+      const last = out[out.length - 1];
+      if (last?.label === label) last.notes.push(n);
+      else out.push({ label, notes: [n] });
+    }
+    return out;
+  }, [list, searched, sort]);
   const selected =
     (selectedId && alive(notes).find((n) => n.id === selectedId)) || (!mobile ? list[0] : undefined) || undefined;
-  const linkedCount = (id: string) =>
-    alive(todos).filter((t) => t.noteId === id).length + alive(transactions).filter((t) => t.noteId === id).length;
+  const linkedTasks = (id: string) => alive(todos).filter((t) => t.noteId === id).length;
+  const linkedExpenses = (id: string) => alive(transactions).filter((t) => t.noteId === id).length;
 
   const newNote = () => {
     setQuery("");
-    setSearching(false);
+    setShow("all");
     leave(null);
     const n = addNote({ title: "" }); // empty, so the "Untitled" placeholder doesn't need deleting
     setSelectedId(n.id);
@@ -212,16 +233,16 @@ export default function NotesView() {
 
   if (liveCount === 0) {
     return (
-      <div className="mx-auto w-full max-w-3xl">
-        <h2 className="fn-serif mb-5 mt-5 text-[2.1rem] leading-tight md:mt-7">Notes</h2>
+      <div className="mx-auto w-full max-w-3xl pt-5 md:pt-6">
+        <h2 className="fn-display mb-5 text-[28px]">Notes</h2>
         <EmptyStart
           title="No notes yet"
-          hint="Start a note, photograph handwriting, record a voice note — or ask the assistant to write one."
+          hint="Write one, scan a page, or say what's on your mind and it lands here."
           prompts={["Note: weekend trip ideas", "Summarize this: standup notes, ship Friday, Andi on QA"]}
         />
         <div className="mt-4 flex justify-center">
-          <button onClick={newNote} className="flex min-h-11 items-center gap-2 rounded-xl bg-[var(--accent)] px-5 font-medium text-white">
-            <Icon name="noteAdd" size={18} /> New note
+          <button onClick={newNote} className="btn btn-primary btn-lg">
+            <Icon name="noteAdd" size={18} /> Write a note
           </button>
         </div>
       </div>
@@ -237,53 +258,76 @@ export default function NotesView() {
     <div className="-mx-4 flex min-h-0 flex-1 md:-mx-8">
       {(mobile ? showList : listPresence.mounted) && (
         <aside
-          className={`fn-aside flex min-h-0 w-full shrink-0 flex-col md:w-[331px] md:border-r md:border-[var(--line)] ${mobile && returned ? "fn-list-back" : ""}`}
+          className={`fn-aside flex min-h-0 w-full shrink-0 flex-col md:w-[331px] md:border-r md:border-[var(--border)] ${mobile && returned ? "fn-list-back" : ""}`}
           data-state={mobile ? undefined : listPresence.state}
           inert={!mobile && listHidden ? true : undefined}
         >
-          {/* Fixed width inside, so the cards don't reflow while the list folds. */}
-          <div className="flex min-h-0 w-full flex-1 flex-col px-4 md:w-[330px] md:px-[18px]">
+          {/* Fixed width inside, so the rows don't reflow while the list folds. */}
+          <div className="flex min-h-0 w-full flex-1 flex-col px-3 md:w-[330px]">
           {/* The list carries the tab's title, as the macOS app has it. */}
-          <div className="flex items-center justify-between gap-2 pb-4 pt-5 md:pt-7">
-            <h2 className="fn-serif text-[2.1rem] leading-tight" title={`${liveCount} note${liveCount === 1 ? "" : "s"}`}>Notes</h2>
-            <div className="flex items-center gap-0.5">
-              <Dropdown label="Sort notes" button={<Icon name="sort" size={19} />} width={200} chevron={false} align="right">
-                {(close) => (Object.keys(SORTS) as Sort[]).map((s) => (
-                  <MenuItem key={s} label={SORTS[s]} active={sort === s} onSelect={() => { close(); setSort(s); }} />
-                ))}
-              </Dropdown>
-              <button className={`tb-btn ${searching ? "bg-[var(--hover)] text-[var(--text)]" : ""}`} onClick={() => { setSearching((v) => !v); if (searching) setQuery(""); }} aria-label="Search notes" aria-pressed={searching}>
-                <Icon name="search" size={18} />
-              </button>
-            </div>
+          <div className="flex items-center gap-1 pb-3 pl-2 pr-1 pt-5 md:pt-6">
+            <h2 className="fn-display min-w-0 flex-1 text-[28px]" title={plural(liveCount, "note")}>Notes</h2>
+            <Dropdown
+              label="Sort notes"
+              title={`Sorted by ${SORTS[sort].toLowerCase()}`}
+              button={<Icon name="sort" size={18} />}
+              width={220}
+              chevron={false}
+              align="right"
+              className="btn btn-plain btn-icon max-md:h-11 max-md:w-11"
+            >
+              {(close) => (Object.keys(SORTS) as Sort[]).map((s) => (
+                <MenuItem key={s} label={SORTS[s]} active={sort === s} onSelect={() => { close(); setSort(s); }} />
+              ))}
+            </Dropdown>
+            <button onClick={newNote} className="btn btn-primary pl-2.5 pr-3.5 max-md:h-11">
+              <Icon name="plus" size={16} /> New
+            </button>
           </div>
-          <button
-            onClick={newNote}
-            className="fn-press mb-3 flex min-h-12 w-full items-center gap-3 rounded-[10px] bg-[var(--panel)] px-4 text-left text-sm text-[color-mix(in_srgb,var(--text)_85%,transparent)] hover:bg-[var(--hover)] hover:text-[var(--text)]"
-          >
-            <Icon name="plus" size={18} /> Add new note
-          </button>
-          {searching && (
-            <div className="fn-rise pb-3">
+          <div className="px-1 pb-3">
+            <div className="relative">
+              <Icon name="search" size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input
-                autoFocus
+                type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by words or meaning"
+                onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
+                placeholder="Search notes"
                 aria-label="Search notes"
-                className="h-10 w-full rounded-lg border border-[var(--line)] bg-[var(--bg)] px-3 text-sm outline-none focus:border-[var(--accent)]"
+                className="field pl-9 max-md:h-11"
               />
-              {query.trim().length >= 3 && ranked?.q.toLowerCase() === query.trim().toLowerCase() && (
-                <p className="px-1 pt-1 text-xs text-[var(--faint)]">Best matches first</p>
-              )}
+            </div>
+            {query.trim().length >= 3 && ranked?.q.toLowerCase() === query.trim().toLowerCase() && (
+              <p className="px-2 pt-1.5 text-xs text-[var(--text-muted)]">Best matches first</p>
+            )}
+          </div>
+          {(quickCount > 0 || show === "quick") && (
+            <div role="group" aria-label="Show" className="seg mx-1 mb-1 flex">
+              <button type="button" aria-pressed={show === "all"} onClick={() => setShow("all")} className="flex-1 max-md:h-[38px]">
+                All <span className="fn-num font-normal text-[var(--text-muted)]">{liveCount}</span>
+              </button>
+              <button type="button" aria-pressed={show === "quick"} onClick={() => setShow("quick")} className="flex-1 max-md:h-[38px]">
+                Quick <span className="fn-num font-normal text-[var(--text-muted)]">{quickCount}</span>
+              </button>
             </div>
           )}
-          <ul className="scroll-thin -mx-1 min-h-0 flex-1 space-y-2.5 overflow-y-auto px-1 pb-24">
-            {list.map((n) => (
-              <NoteCard key={n.id} note={n} selected={!mobile && selected?.id === n.id} linked={linkedCount(n.id)} onOpen={() => open(n.id)} />
+          <div className="scroll-thin -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-24">
+            {groups.map((g) => (
+              <section key={g.label || "all"} aria-label={g.label || undefined}>
+                {g.label && <h3 className="group-label px-2 pb-1.5 pt-3">{g.label}</h3>}
+                <ul className="flex flex-col gap-1">
+                  {g.notes.map((n) => (
+                    <NoteCard key={n.id} note={n} selected={!mobile && selected?.id === n.id} tasks={linkedTasks(n.id)} expenses={linkedExpenses(n.id)} onOpen={() => open(n.id)} />
+                  ))}
+                </ul>
+              </section>
             ))}
-            {query && list.length === 0 && <li className="px-3 py-6 text-center text-sm text-[var(--faint)]">No matching notes.</li>}
-          </ul>
+            {list.length === 0 && (
+              <p className="px-3 py-8 text-center text-sm text-[var(--text-muted)]">
+                {searched ? "No matching notes." : "No quick notes yet. Jot one down on Today."}
+              </p>
+            )}
+          </div>
           </div>
         </aside>
       )}

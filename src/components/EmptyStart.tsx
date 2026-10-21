@@ -14,25 +14,20 @@ export default function EmptyStart({ title, hint, prompts, extra, showSample = t
 }) {
   const { send, busy } = useAssistant();
   return (
-    <div className="rounded-xl border border-dashed border-[var(--line)] px-5 py-8 text-center">
-      <div className="text-base font-medium">{title}</div>
-      <p className="mx-auto mt-1 max-w-md text-sm text-[var(--muted)]">{hint}</p>
+    <div className="flex flex-col items-center gap-2.5 rounded-[var(--radius-panel)] border border-[var(--border)] bg-[var(--surface)] px-6 py-8 text-center">
+      <div className="text-lg font-medium">{title}</div>
+      <p className="max-w-[420px] text-[var(--text-secondary)]">{hint}</p>
 
-      <div className="mt-4 flex flex-wrap justify-center gap-2">
+      <div role="group" aria-label="Try saying" className="mt-2 flex flex-wrap justify-center gap-2">
         {prompts.map((p) => (
-          <button
-            key={p}
-            disabled={!!busy}
-            onClick={() => send(p)}
-            className="fn-press rounded-full border border-[var(--line)] px-3.5 py-1.5 text-sm text-[var(--muted)] hover:bg-[var(--hover)] hover:text-[var(--text)] disabled:opacity-50"
-          >
+          <button key={p} type="button" disabled={!!busy} onClick={() => send(p)} className="pill disabled:opacity-45 max-md:h-11">
             “{p}”
           </button>
         ))}
       </div>
 
       {(extra || showSample) && (
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-sm">
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
           {extra}
           {showSample && <SampleDataButton />}
         </div>
