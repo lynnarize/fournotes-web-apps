@@ -8,6 +8,8 @@ import { usePulsingTabs } from "@/lib/highlight";
 import { isMac } from "@/lib/hooks";
 import { openItem, openSettings as openSettingsAt } from "@/lib/nav";
 import { alive, localMonth, useStore } from "@/lib/store";
+import { useTalks } from "@/lib/talks/db";
+import { useRecordingLabel } from "@/lib/talks/recorder";
 import type { Tab } from "@/lib/types";
 import { wipeThisDevice } from "@/lib/wipe";
 import { useAssistant } from "./assistant";
@@ -24,6 +26,7 @@ export const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "notes", label: "Notes", icon: "note" },
   { id: "todo", label: "To-Do", icon: "todo" },
   { id: "finance", label: "Finance", icon: "finance" },
+  { id: "transcribe", label: "Transcribe", icon: "wave" },
 ];
 
 const STATUS_LABEL = { off: "", "signed-out": "Not synced", syncing: "Syncing…", synced: "Synced", offline: "Offline", error: "Sync error" } as const;
@@ -43,6 +46,7 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
 }) {
   const store = useStore();
   const { notes, todos, transactions, spaces, currentSpaceId, switchSpace } = store;
+  const talks = useTalks();
   const { scan, recording, startRecording, stopRecording, busy, voice, toggleVoice } = useAssistant();
   const cloud = useCloud();
   const google = useGoogleSync();
@@ -54,7 +58,9 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
     notes: alive(notes).length,
     todo: alive(todos).filter((t) => !t.done).length,
     finance: alive(transactions).filter((t) => t.date.startsWith(month)).length,
+    transcribe: talks.filter((t) => !t.deletedAt && (t.spaceId ?? null) === currentSpaceId).length,
   };
+  const recordingFor = useRecordingLabel();
   const go = (t: Tab) => { setTab(t); onClose?.(); };
   const search = () => { onSearch(); onClose?.(); };
   const openSettings = () => { onSettings(); onClose?.(); };
@@ -194,13 +200,19 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
                 {/* Still being shaped: said plainly beside its name. */}
                 {t.id === "finance" && <span className="badge badge-info h-5 px-1.5 text-[11px]">Beta</span>}
                 <span className="flex-1" />
+                {t.id === "transcribe" && recordingFor && (
+                  <span className="fn-num flex items-center gap-1.5 pr-0.5 text-xs text-[var(--danger)]">
+                    <span className="recording h-1.5 w-1.5 rounded-full bg-[var(--danger)]" aria-hidden />
+                    {recordingFor}<span className="sr-only">, recording</span>
+                  </span>
+                )}
                 {pulse && (
                   <span className="relative grid h-4 w-4 shrink-0 place-items-center">
                     <span className="fn-ping relative" aria-hidden />
                     <span className="sr-only">, new from the assistant</span>
                   </span>
                 )}
-                {counts[t.id] > 0 && (
+                {counts[t.id] > 0 && !(t.id === "transcribe" && recordingFor) && (
                   <span
                     className={`fn-num pr-0.5 text-xs font-normal text-[var(--text-muted)] ${
                       menuAlways ? "invisible" : "group-hover:invisible group-has-[:focus-visible]:invisible group-has-[[aria-expanded=true]]:invisible"
@@ -241,6 +253,7 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
                         </>
                       )}
                       {t.id === "todo" && <MenuItem icon="todo" label="New task" onSelect={() => { close(); newTask(); }} />}
+                      {t.id === "transcribe" && <MenuItem icon="mic" label="Record a talk" onSelect={() => { close(); go("transcribe"); }} />}
                       {t.id === "finance" && (
                         <>
                           <MenuItem icon="finance" label="New transaction" onSelect={() => { close(); newTransaction(); }} />
@@ -264,7 +277,7 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
       <div className="flex gap-2">
         <ScanPicker onFile={(f) => { onClose?.(); scan(f); }}>
           {(pick) => (
-            <button type="button" className="btn btn-secondary flex-1 font-normal max-md:h-11" onClick={pick} disabled={!!busy} title="Scan a receipt, note or e-wallet screenshot">
+            <button type="button" className="btn btn-secondary flex-1 font-normal max-md:h-11" onClick={pick} disabled={!!busy} title="Scan a receipt, note, e-wallet screenshot or chat">
               <Icon name="scan" size={16} /> Scan
             </button>
           )}

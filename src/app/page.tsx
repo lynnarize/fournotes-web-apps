@@ -17,6 +17,7 @@ import Sidebar, { ChevronsUpDown, TABS } from "@/components/Sidebar";
 import SampleBanner from "@/components/SampleData";
 import TodayView from "@/components/TodayView";
 import TodoView from "@/components/TodoView";
+import TranscribeView from "@/components/TranscribeView";
 import { Icon, ToastProvider } from "@/components/ui";
 import { useBackDismiss, useTabHistory } from "@/lib/backstack";
 import { usePulsingTabs } from "@/lib/highlight";
@@ -25,7 +26,7 @@ import { scrollToId, useOpenItem, useOpenSettings, useOpenTab } from "@/lib/nav"
 import { StoreProvider, useStore } from "@/lib/store";
 import type { Tab } from "@/lib/types";
 
-const TITLES: Record<Tab, string> = { today: "Today", notes: "Notes", todo: "To-Do", finance: "Finance" };
+const TITLES: Record<Tab, string> = { today: "Today", notes: "Notes", todo: "To-Do", finance: "Finance", transcribe: "Transcribe" };
 
 export default function Page() {
   return (
@@ -55,8 +56,8 @@ function Shell() {
   const pulsing = usePulsingTabs().filter((t) => t !== tab);
   // Notes fills the height (its list and editor scroll on their own), and Today is one page
   // that fits the window; the other tabs scroll the page.
-  const wide = tab === "notes";
-  const fits = tab === "notes" || tab === "today";
+  const wide = tab === "notes" || tab === "transcribe";
+  const fits = tab === "notes" || tab === "today" || tab === "transcribe";
   // Phones: the header stays on top; it gets a hairline once the page scrolls under it.
   const [scrolled, setScrolled] = useState(false);
 
@@ -71,7 +72,7 @@ function Shell() {
 
   // Stickies only show on Today.
   useOpenItem("any", (f) => {
-    setTab(f.kind === "sticky" ? "today" : f.kind === "note" ? "notes" : f.kind === "todo" ? "todo" : "finance");
+    setTab(f.kind === "sticky" ? "today" : f.kind === "note" || f.kind === "person" ? "notes" : f.kind === "todo" ? "todo" : f.kind === "talk" ? "transcribe" : "finance");
   });
 
   // ⌘K / Ctrl+K: search and quick add. ⌘, / Ctrl+,: Settings.
@@ -114,8 +115,9 @@ function Shell() {
   return (
     <AssistantProvider onFiled={setTab}>
       <BackgroundJobs />
-      {/* --tabbar-space: how much of the bottom edge the phone tab bar takes (0 on larger screens),
-          for anything fixed to the bottom of the window. */}
+      {/* --tabbar-space: how much of the bottom edge the phone tab bar covers (0 on larger screens).
+          The bar floats over the page, so anything that scrolls to the bottom, or is fixed there,
+          keeps this much clear. */}
       <div className="app-root flex h-dvh flex-col overflow-hidden pt-[env(safe-area-inset-top)] [--tabbar-space:calc(env(safe-area-inset-bottom)+86px)] md:pt-0 md:[--tabbar-space:0px]">
         <PwaSetup />
         <SampleBanner />
@@ -157,7 +159,7 @@ function Shell() {
             </header>
 
             {/* Every tab: same width, same side padding, same title position. */}
-            <div key={tab} className={`fn-rise mx-auto w-full flex-1 px-4 md:px-8 ${fits ? "flex min-h-0 flex-col" : "pb-24"} ${wide ? "" : "max-w-[1500px]"}`}>
+            <div key={tab} className={`fn-rise mx-auto w-full flex-1 px-4 md:px-8 ${fits ? "flex min-h-0 flex-col" : "pb-24 max-md:pb-[calc(var(--tabbar-space)+72px)]"} ${wide ? "" : "max-w-[1500px]"}`}>
               {/* Today's greeting stands in for the title, and Notes has its own in the list. */}
               <h1 className={`fn-display mb-5 mt-5 flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 text-[34px] md:mb-6 md:mt-8 md:text-[36px] ${fits ? "sr-only" : ""}`}>
                 {TITLES[tab]}
@@ -177,6 +179,8 @@ function Shell() {
                 <NotesView />
               ) : tab === "todo" ? (
                 <TodoView />
+              ) : tab === "transcribe" ? (
+                <TranscribeView />
               ) : (
                 <FinanceView setTab={setTab} />
               )}
@@ -187,9 +191,9 @@ function Shell() {
           </main>
         </div>
 
-        {/* Phones: the four places in a floating bar along the bottom. */}
-        <nav aria-label="Main" className="shrink-0 px-3 pb-[calc(env(safe-area-inset-bottom)+16px)] md:hidden">
-          <div className="flex rounded-[var(--radius-surface)] border border-[var(--border)] bg-[var(--surface)] p-1.5">
+        {/* Phones: the five places in a bar floating over the page: what scrolls under it shows through. */}
+        <nav aria-label="Main" className="pointer-events-none fixed inset-x-0 bottom-0 z-[35] px-3 pb-[calc(env(safe-area-inset-bottom)+16px)] md:hidden">
+          <div className="tabbar pointer-events-auto flex rounded-[var(--radius-surface)] border border-[var(--border)] p-1.5 shadow-[var(--shadow-floating)]">
             {TABS.map((t) => {
               const on = tab === t.id;
               const pulse = pulsing.includes(t.id);

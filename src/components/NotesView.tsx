@@ -9,12 +9,15 @@ import { useFiledFlash } from "@/lib/highlight";
 import { usePresence } from "@/lib/hooks";
 import { scrollToId, useOpenItem } from "@/lib/nav";
 import { snippet } from "@/lib/noteText";
+import { usePeople } from "@/lib/people";
 import { isQuick } from "@/lib/quickNote";
 import { semanticNotes } from "@/lib/search";
 import { alive, useStore } from "@/lib/store";
 import type { Note } from "@/lib/types";
 import EmptyStart from "./EmptyStart";
+import Conflicts from "./notes/Conflicts";
 import { Dropdown, MenuItem } from "./notes/Dropdown";
+import { PeopleList, PersonPage } from "./notes/People";
 import { Icon } from "./ui";
 
 // The editor (and its library) loads only when Notes is opened.
@@ -26,7 +29,7 @@ const NoteEditor = dynamic(() => import("./notes/NoteEditor"), {
 const SOURCE_LABEL: Record<Note["source"], string> = { manual: "", chat: "From chat", ocr: "Scanned", recording: "Recording", share: "Shared" };
 const SORTS = { updated: "Last edited", created: "Date created", title: "Title, A to Z" } as const;
 type Sort = keyof typeof SORTS;
-type Show = "all" | "quick";
+type Show = "all" | "quick" | "people";
 const PREFS = "four-notes:notes-view";
 
 /** "Oct 15", or "Oct 15, 2025" once it is not this year. */
@@ -92,6 +95,9 @@ export default function NotesView() {
   const { notes, todos, transactions, addNote, remove } = useStore();
   const [query, setQuery] = useState("");
   const [show, setShow] = useState<Show>("all");
+  const [personKey, setPersonKey] = useState<string | null>(null);
+  const [conflictsOpen, setConflictsOpen] = useState(false);
+  const people = usePeople({ notes, todos, transactions });
   const [ranked, setRanked] = useState<{ q: string; ids: string[] } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sort, setSort] = useState<Sort>("updated");
@@ -171,6 +177,12 @@ export default function NotesView() {
     open(f.id);
     scrollToId(`note-row-${f.id}`, "nearest");
   });
+  useOpenItem("person", (f) => {
+    setQuery("");
+    setShow("people");
+    setPersonKey(f.id);
+    setMobileOpen(true);
+  });
 
   // Search: instant substring filter, then ranking by meaning (or BM25) after a pause.
   useEffect(() => {
@@ -183,7 +195,7 @@ export default function NotesView() {
   }, [query, notes]);
 
   const list = useMemo(() => {
-    const live = alive(notes).filter((n) => show === "all" || isQuick(n));
+    const live = alive(notes).filter((n) => show !== "quick" || isQuick(n));
     const q = query.trim().toLowerCase();
     if (!q) {
       const by = {
@@ -218,6 +230,8 @@ export default function NotesView() {
   }, [list, searched, sort]);
   const selected =
     (selectedId && alive(notes).find((n) => n.id === selectedId)) || (!mobile ? list[0] : undefined) || undefined;
+  const shownPeople = query.trim() ? people.filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase())) : people;
+  const person = show === "people" ? people.find((p) => p.key === personKey) ?? (!mobile ? shownPeople[0] : undefined) : undefined;
   const linkedTasks = (id: string) => alive(todos).filter((t) => t.noteId === id).length;
   const linkedExpenses = (id: string) => alive(transactions).filter((t) => t.noteId === id).length;
 
@@ -249,7 +263,7 @@ export default function NotesView() {
     );
   }
 
-  const showList = mobile ? !mobileOpen : !listHidden;
+  const showList = mobile ? !mobileOpen || (show === "people" && !person) : !listHidden;
   const showEditor = !!selected && (mobile ? mobileOpen : true);
 
   return (
@@ -280,6 +294,21 @@ export default function NotesView() {
                 <MenuItem key={s} label={SORTS[s]} active={sort === s} onSelect={() => { close(); setSort(s); }} />
               ))}
             </Dropdown>
+            <Dropdown
+              label="More"
+              button={<Icon name="more" size={18} />}
+              width={250}
+              chevron={false}
+              align="right"
+              className="btn btn-plain btn-icon max-md:h-11 max-md:w-11"
+            >
+              {(close) => (
+                <>
+                  <MenuItem icon="warning" label="Find notes that disagree…" onSelect={() => { close(); setConflictsOpen(true); }} />
+                  <MenuItem icon="users" label="People in your notes" onSelect={() => { close(); setQuery(""); setShow("people"); }} />
+                </>
+              )}
+            </Dropdown>
             <button onClick={newNote} className="btn btn-primary pl-2.5 pr-3.5 max-md:h-11">
               <Icon name="plus" size={16} /> New
             </button>
@@ -292,27 +321,33 @@ export default function NotesView() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
-                placeholder="Search notes"
-                aria-label="Search notes"
+                placeholder={show === "people" ? "Search people" : "Search notes"}
+                aria-label={show === "people" ? "Search people" : "Search notes"}
                 className="field pl-9 max-md:h-11"
               />
             </div>
-            {query.trim().length >= 3 && ranked?.q.toLowerCase() === query.trim().toLowerCase() && (
+            {show !== "people" && query.trim().length >= 3 && ranked?.q.toLowerCase() === query.trim().toLowerCase() && (
               <p className="px-2 pt-1.5 text-xs text-[var(--text-muted)]">Best matches first</p>
             )}
           </div>
-          {(quickCount > 0 || show === "quick") && (
-            <div role="group" aria-label="Show" className="seg mx-1 mb-1 flex">
-              <button type="button" aria-pressed={show === "all"} onClick={() => setShow("all")} className="flex-1 max-md:h-[38px]">
-                All <span className="fn-num font-normal text-[var(--text-muted)]">{liveCount}</span>
-              </button>
+          <div role="group" aria-label="Show" className="seg mx-1 mb-1 flex">
+            <button type="button" aria-pressed={show === "all"} onClick={() => setShow("all")} className="flex-1 max-md:h-[38px]">
+              All <span className="fn-num font-normal text-[var(--text-muted)]">{liveCount}</span>
+            </button>
+            {(quickCount > 0 || show === "quick") && (
               <button type="button" aria-pressed={show === "quick"} onClick={() => setShow("quick")} className="flex-1 max-md:h-[38px]">
                 Quick <span className="fn-num font-normal text-[var(--text-muted)]">{quickCount}</span>
               </button>
-            </div>
-          )}
-          <div className="scroll-thin -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-24">
-            {groups.map((g) => (
+            )}
+            <button type="button" aria-pressed={show === "people"} onClick={() => setShow("people")} className="flex-1 max-md:h-[38px]">
+              People {people.length > 0 && <span className="fn-num font-normal text-[var(--text-muted)]">{people.length}</span>}
+            </button>
+          </div>
+          <div className="scroll-thin -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-24 max-md:pb-[calc(var(--tabbar-space)+64px)]">
+            {show === "people" && (
+              <PeopleList people={shownPeople} selected={!mobile ? person?.key : undefined} onOpen={(k) => { setPersonKey(k); setMobileOpen(true); }} />
+            )}
+            {show !== "people" && groups.map((g) => (
               <section key={g.label || "all"} aria-label={g.label || undefined}>
                 {g.label && <h3 className="group-label px-2 pb-1.5 pt-3">{g.label}</h3>}
                 <ul className="flex flex-col gap-1">
@@ -322,7 +357,7 @@ export default function NotesView() {
                 </ul>
               </section>
             ))}
-            {list.length === 0 && (
+            {show !== "people" && list.length === 0 && (
               <p className="px-3 py-8 text-center text-sm text-[var(--text-muted)]">
                 {searched ? "No matching notes." : "No quick notes yet. Jot one down on Today."}
               </p>
@@ -332,7 +367,13 @@ export default function NotesView() {
         </aside>
       )}
 
-      {showEditor && selected && (
+      <Conflicts open={conflictsOpen} onClose={() => setConflictsOpen(false)} />
+
+      {show === "people" && person && (mobile ? mobileOpen : true) && (
+        <PersonPage person={person} onBack={mobile ? () => { setMobileOpen(false); setReturned(true); } : undefined} />
+      )}
+
+      {show !== "people" && showEditor && selected && (
         <NoteEditor
           key={selected.id}
           note={selected}

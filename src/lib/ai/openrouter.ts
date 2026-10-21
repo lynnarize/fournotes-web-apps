@@ -372,7 +372,8 @@ export class OpenRouterProvider implements LLMProvider {
   async captureImage(base64: string, mediaType: string, ctx: ClientContext): Promise<CaptureResult> {
     return this.captureCall(
       [
-        { role: "system", content: STATIC_INSTRUCTIONS },
+        // The time is there so a chat's "Saturday" or "besok" lands on the right day.
+        { role: "system", content: `${STATIC_INSTRUCTIONS}\n\nCurrent local time: ${ctx.now} (timezone ${ctx.timezone}).` },
         {
           role: "user",
           content: [
@@ -381,10 +382,10 @@ export class OpenRouterProvider implements LLMProvider {
               type: "text",
               text:
                 "Read this image (OCR). Decide if it is a receipt (including e-wallet or m-banking payment screenshots), a ticket or booking " +
-                "(train, bus, flight, event, hotel, appointment), a handwritten/typed note, a to-do list, or other, then call the file_capture tool " +
+                "(train, bus, flight, event, hotel, appointment), a screenshot of a chat (WhatsApp and the like), a handwritten/typed note, a to-do list, or other, then call the file_capture tool " +
                 "with the extracted fields. For receipts, extract merchant, grand total, date, category and line items. For a ticket, put the booking " +
                 "details in `note` AND add a todo whose dueAt is the departure/start date and time, copied exactly as printed (local time with the " +
-                "user's offset, never converted to UTC; if the year is missing use the next occurrence of that date). 'Rp 25.000' means 25000. If you cannot call a tool, reply with the same fields as plain JSON.",
+                "user's offset, never converted to UTC; if the year is missing use the next occurrence of that date). For a chat, file the plans: what was agreed, and tasks for each meetup and for what the user (the messages on the right) said they'd do; resolve 'Saturday' or 'besok' against the current time. 'Rp 25.000' means 25000. If you cannot call a tool, reply with the same fields as plain JSON.",
             },
           ],
         },
@@ -444,6 +445,27 @@ export class OpenRouterProvider implements LLMProvider {
     );
     const lines = briefLines(text);
     return lines ? lines.join("\n") : this.fallback("daily brief", text, () => localBrief(input));
+  }
+
+  /** Forced tool use where supported; falls back to asking for plain JSON (as captureCall does). */
+  async agent(system: string, prompt: string, schema: Record<string, unknown>, fast: boolean) {
+    const model = fast ? this.fastModel : this.model;
+    const tools = toOpenAiTools([{ name: "respond", description: "Give the result.", input_schema: schema }]);
+    const messages: Msg[] = [
+      { role: "system", content: system },
+      { role: "user", content: `${prompt}\n\nCall the respond tool with the result. If you cannot call a tool, reply with the same fields as plain JSON.` },
+    ];
+    let res: Completion;
+    try {
+      // Reasoning models think before they answer: room for both, or the JSON comes back cut off.
+      res = await this.complete({ model, max_tokens: 8192, messages, tools, tool_choice: { type: "function", function: { name: "respond" } } });
+    } catch (e) {
+      if (!(e instanceof ProviderError) || e.status >= 500 || e.status === 429) throw e;
+      res = await this.complete({ model, max_tokens: 8192, messages, tools, tool_choice: "auto" });
+    }
+    const message = res.choices?.[0]?.message;
+    const call = message?.tool_calls?.[0];
+    return call ? safeJson(call.function.arguments || "{}") : safeJson(cleanText(message?.content ?? ""));
   }
 
   async write(task: WritingTask, text: string, title: string) {

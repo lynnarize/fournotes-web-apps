@@ -75,7 +75,7 @@ export default function ScanPicker({ onFile, children }: { onFile: (file: File) 
             >
               <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border-strong)]" aria-hidden />
               <h2 id="scan-picker-title" className="px-3 text-[15px] font-medium">Scan</h2>
-              <p className="px-3 pb-3 pt-0.5 text-[13px] text-[var(--text-secondary)]">A receipt, a handwritten note, or an e-wallet screenshot</p>
+              <p className="px-3 pb-3 pt-0.5 text-[13px] text-[var(--text-secondary)]">A receipt, a note, an e-wallet screenshot, or a chat with plans in it</p>
               {option("camera", "Take a photo", "Open the camera", () => choose(cameraRef.current))}
               {option("image", "Choose from files", "Gallery, photos or file manager", () => choose(filesRef.current))}
               <button type="button" onClick={() => setSheet(false)} className="btn btn-plain btn-lg mt-1 w-full">

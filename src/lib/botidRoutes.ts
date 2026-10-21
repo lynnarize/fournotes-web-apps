@@ -9,6 +9,9 @@ export const BOTID_ROUTES = [
   "/api/finance/summary",
   "/api/ai/write",
   "/api/ai/web-ideas",
+  "/api/ai/recheck",
+  "/api/ai/agent",
   "/api/ingest/image",
   "/api/ingest/audio",
+  "/api/transcribe",
 ].map((path) => ({ path, method: "POST" }));

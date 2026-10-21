@@ -3,7 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { BriefInput, CaptureResult, ChatMessage, ChatResponse, ClientContext, Transaction } from "../types";
 import { ProviderError } from "./errors";
 import { SCOPE_INSTRUCTIONS, type Scope } from "./guard";
-import { captureToActions, dynamicContext, STATIC_INSTRUCTIONS, type LLMProvider, type WebAnswer } from "./provider";
+import { captureToActions, dynamicContext, STATIC_INSTRUCTIONS, type LLMProvider, type Recheck, type WebAnswer } from "./provider";
 import { ACTION_TOOLS, FILE_CAPTURE_TOOL } from "./tools";
 import { validateActions } from "./validate";
 import { WRITING_SYSTEM, writingPrompt, type WritingTask } from "./writing";
@@ -88,10 +88,10 @@ export class AnthropicProvider implements LLMProvider {
               type: "text",
               text:
                 "Read this image (OCR). Decide if it is a receipt (including e-wallet / m-banking payment screenshots), a ticket or booking " +
-                "(train, bus, flight, event, hotel, appointment), a handwritten/typed note, a to-do list, or other, then call file_capture. " +
+                "(train, bus, flight, event, hotel, appointment), a screenshot of a chat (WhatsApp and the like), a handwritten/typed note, a to-do list, or other, then call file_capture. " +
                 "For notes, transcribe faithfully and tidy formatting. For receipts, extract merchant, grand total, date, category and line items. " +
                 "For a ticket, put the booking details in `note` AND add a todo whose dueAt is the departure/start date and time, copied exactly as printed " +
-                "(local time with the user's offset, never converted to UTC; if the year is missing use the next occurrence of that date). 'Rp 25.000' means 25000.",
+                "(local time with the user's offset, never converted to UTC; if the year is missing use the next occurrence of that date). For a chat, file the plans: what was agreed, and tasks for each meetup and for what the user (the messages on the right) said they'd do; resolve 'Saturday' or 'besok' against the current time. 'Rp 25.000' means 25000.",
             },
           ],
         },
@@ -167,6 +167,19 @@ export class AnthropicProvider implements LLMProvider {
     return res.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
   }
 
+  async agent(system: string, prompt: string, schema: Record<string, unknown>, fast: boolean) {
+    const res = await this.client.messages.create({
+      model: fast ? this.fastModel : this.model,
+      max_tokens: 4096,
+      system,
+      tools: [{ name: "respond", description: "Give the result.", input_schema: schema as Anthropic.Tool.InputSchema }],
+      tool_choice: { type: "tool", name: "respond" },
+      messages: [{ role: "user", content: prompt }],
+    });
+    logUsage("agent", res);
+    return res.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use")?.input ?? null;
+  }
+
   async write(task: WritingTask, text: string, title: string) {
     const res = await this.client.messages.create({
       model: this.model,
@@ -177,21 +190,41 @@ export class AnthropicProvider implements LLMProvider {
     logUsage("write", res);
     return res.content.map((b) => (b.type === "text" ? b.text : "")).join("").trim();
   }
+
   /**
    * "Ideas from the web" for a note: Anthropic's server-side web search, only ever run
    * from the user's own tap, since it sends the note to Anthropic and searches.
    */
   async webIdeas(title: string, content: string, question: string): Promise<WebAnswer> {
+    const ask = question.trim() || "Suggest a few concrete, current recommendations that would help with this note.";
+    return this.webSearch(WEB_IDEAS_SYSTEM, `My note “${title}”:\n${content.slice(0, 6000)}\n\n${ask}`);
+  }
+
+  /**
+   * A note marked "keep current": searches for what has changed since it was last checked.
+   * Runs only for notes the user marked, since it sends the note to Anthropic and searches.
+   */
+  async recheck(title: string, content: string, since: string): Promise<Recheck> {
+    const { text, sources } = await this.webSearch(
+      RECHECK_SYSTEM,
+      `My note “${title}”, last checked ${since.slice(0, 10)}:\n${content.slice(0, 6000)}\n\nHas anything in it changed since then?`,
+    );
+    const status = text.match(/^\s*STATUS:\s*(CHANGED|UNCHANGED)/im)?.[1]?.toUpperCase();
+    const summary = text.match(/^\s*SUMMARY:\s*(.+)$/im)?.[1]?.trim() ?? "";
+    const changes = [...text.matchAll(/^\s*[-•*]\s+(.+)$/gm)].map((m) => m[1].trim()).slice(0, 6);
+    return { changed: status === "CHANGED" && changes.length > 0, summary, changes, sources };
+  }
+
+  /** Anthropic's server-side web search, carried on when a long search comes back paused. */
+  private async webSearch(system: string, prompt: string): Promise<WebAnswer> {
     // Dynamic filtering needs a current Sonnet or Opus; Haiku keeps the basic search tool.
     const tool = this.model.includes("haiku")
       ? { type: "web_search_20250305" as const, name: "web_search" as const, max_uses: 4 }
       : { type: "web_search_20260209" as const, name: "web_search" as const, max_uses: 4 };
-    const ask = question.trim() || "Suggest a few concrete, current recommendations that would help with this note.";
-    const messages: Anthropic.MessageParam[] = [{ role: "user", content: `My note “${title}”:\n${content.slice(0, 6000)}\n\n${ask}` }];
+    const messages: Anthropic.MessageParam[] = [{ role: "user", content: prompt }];
     const blocks: Anthropic.ContentBlock[] = [];
-    // A long search can come back paused; sending the turn back as it stands lets it carry on.
     for (let i = 0; i < 3; i++) {
-      const res = await this.client.messages.create({ model: this.model, max_tokens: 4000, system: WEB_IDEAS_SYSTEM, tools: [tool], messages });
+      const res = await this.client.messages.create({ model: this.model, max_tokens: 4000, system, tools: [tool], messages });
       logUsage("web", res);
       blocks.push(...res.content);
       if (res.stop_reason !== "pause_turn") break;
@@ -210,6 +243,12 @@ export class AnthropicProvider implements LLMProvider {
     return { text: text.trim(), sources: sources.slice(0, 6) };
   }
 }
+
+const RECHECK_SYSTEM =
+  "You keep someone's note current. Search the web for the facts in the note that can go out of date (rules, requirements, prices, " +
+  "opening hours, schedules, versions, availability) and compare. Answer in exactly this format, with nothing before or after:\n" +
+  "STATUS: CHANGED or UNCHANGED\nSUMMARY: one short sentence\n- one line per thing that changed: what the note says, and what's true now\n" +
+  "Only list real changes since the date given, backed by what you found; no advice and no closing offer. Use the note's own language.";
 
 const WEB_IDEAS_SYSTEM =
   "You help someone act on one of their own notes. Search the web for current, specific information, then answer in a short list of 3 to 6 " +

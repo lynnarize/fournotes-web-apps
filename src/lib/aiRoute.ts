@@ -4,6 +4,7 @@
 // Mirrors the order the server uses (src/lib/ai/keys.ts): the user's key, then the server's.
 import { useEffect, useState } from "react";
 import { activeProvider, useUserKeys } from "./byok";
+import { useOnDevice } from "./ai/onDevice";
 
 export type ServerStatus = { anthropic?: boolean; openrouter?: boolean; model?: string; openrouterModel?: string };
 type Status = ServerStatus;
@@ -14,7 +15,11 @@ export function useAiRoute() {
   const { keys } = useUserKeys();
   const [server, setServer] = useState<Status | null>(null);
   useEffect(() => { serverStatus().then(setServer); }, []);
+  const onDevice = useOnDevice();
   const own = activeProvider(keys);
+  // Web search runs on Claude whatever answers the chat, so it's offered by the cloud key alone.
+  const searchable = own === "anthropic" || (!own && Boolean(server?.anthropic));
+  if (onDevice.inUse) return { label: "On this device", canSearchWeb: searchable };
   if (own === "anthropic") return { label: "Your Anthropic key", canSearchWeb: true };
   if (own === "opencode") return { label: "Your OpenCode Go key", canSearchWeb: false };
   if (own === "openrouter") return { label: "Your OpenRouter key", canSearchWeb: false };

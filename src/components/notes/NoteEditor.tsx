@@ -14,10 +14,11 @@ import { CharacterCount, Placeholder } from "@tiptap/extensions";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setActiveNote } from "@/lib/activeNote";
 import { api, downloadFile, fmtDateTime } from "@/lib/client";
-import { openAssistant, openItem } from "@/lib/nav";
+import { canSearchWeb, lastChecked, NEEDS_CLAUDE, recheckNote, updateSection } from "@/lib/keepCurrent";
+import { openAssistant, openItem, openSettings } from "@/lib/nav";
 import { docToPlain, plainToHtml, taskStates, type DocNode } from "@/lib/noteText";
 import { alive, formatMoney, parseAmount, useStore } from "@/lib/store";
-import type { Note } from "@/lib/types";
+import type { KeepCurrent, Note } from "@/lib/types";
 import { guessCategory } from "@/lib/wallet";
 import { useAssistant } from "../assistant";
 import { useNow } from "@/lib/hooks";
@@ -100,6 +101,11 @@ const AI_TASKS = [
   { id: "continue", label: "Continue writing", icon: "arrowRight", result: "Continuation" },
 ] as const;
 type AiTask = (typeof AI_TASKS)[number]["id"];
+/** What the suggestion card can hold: a writing task's result, or a note written from the interview. */
+type AiResult = AiTask | "interview";
+const RESULT_LABEL: Record<AiResult, string> = { ...Object.fromEntries(AI_TASKS.map((t) => [t.id, t.result])), interview: "Your note, written up" } as Record<AiResult, string>;
+/** The interview stops asking after this many answers and writes the note. */
+const INTERVIEW_MAX = 6;
 
 function today() {
   return new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
@@ -247,7 +253,10 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
   const slashRef = useRef(slash);
   slashRef.current = slash;
   const [aiBusy, setAiBusy] = useState<AiTask | null>(null);
-  const [ai, setAi] = useState<{ task: AiTask; text: string; range: { from: number; to: number } | null } | null>(null);
+  const [ai, setAi] = useState<{ task: AiResult; text: string; range: { from: number; to: number } | null } | null>(null);
+  // Interview mode: the assistant asks, you answer, and it writes the note from your answers.
+  const [interview, setInterview] = useState<{ answers: { q: string; a: string }[]; question: string | null; draft: string; busy: boolean } | null>(null);
+  const [checking, setChecking] = useState(false);
   const [listening, setListening] = useState(false);
   const recRef = useRef<{ stop(): void } | null>(null);
   const [tagDraft, setTagDraft] = useState<string | null>(null);
@@ -554,6 +563,63 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
     toast("✨ Added to your note. Undo with ⌘Z / Ctrl+Z if it's not right.");
   };
 
+  // ---- Interview ---------------------------------------------------------------------
+  const interviewInput = (answers: { q: string; a: string }[]) => ({ title: note.title, content: plain().slice(0, 4000), answers });
+  const askNext = async (answers: { q: string; a: string }[]) => {
+    setInterview({ answers, question: null, draft: "", busy: true });
+    try {
+      const { question } = await api.agent("interviewAsk", interviewInput(answers));
+      setInterview({ answers, question: question.trim(), draft: "", busy: false });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "The assistant couldn't ask right now.", "error");
+      setInterview(answers.length ? { answers, question: null, draft: "", busy: false } : null);
+    }
+  };
+  const writeUp = async (answers: { q: string; a: string }[]) => {
+    setInterview((s) => s && { ...s, busy: true });
+    try {
+      const { markdown } = await api.agent("interviewWrite", interviewInput(answers));
+      setInterview(null);
+      setAi({ task: "interview", text: markdown.trim(), range: null });
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "The assistant couldn't write it up right now.", "error");
+      setInterview((s) => s && { ...s, busy: false });
+    }
+  };
+  const answer = () => {
+    if (!interview?.question || !interview.draft.trim()) return;
+    const answers = [...interview.answers, { q: interview.question, a: interview.draft.trim() }];
+    if (answers.length >= INTERVIEW_MAX) void writeUp(answers);
+    else void askNext(answers);
+  };
+
+  // ---- Keep current ------------------------------------------------------------------
+  const checkNow = async (kc: KeepCurrent) => {
+    setChecking(true);
+    try {
+      const changed = await recheckNote({ ...noteRef.current, keepCurrent: kc }, store.updateNote);
+      toast(changed ? "Found changes since you wrote this. They're at the top of the note." : `Nothing has changed. It'll be checked again in a ${kc.every}.`);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Couldn't check the web right now.", "error");
+    } finally {
+      setChecking(false);
+    }
+  };
+  const keepCurrentOn = async () => {
+    if (!(await canSearchWeb())) return toast(NEEDS_CLAUDE, "error", { label: "Add a key", run: () => openSettings("api") });
+    const kc: KeepCurrent = { every: "month", checkedAt: null };
+    store.updateNote(note.id, { keepCurrent: kc });
+    void checkNow(kc);
+  };
+  const applyUpdate = (add: boolean) => {
+    const kc = note.keepCurrent;
+    const u = kc?.update;
+    if (!kc || !u) return;
+    if (add && editor) chain().insertContentAt(editor.state.doc.content.size, plainToHtml(updateSection(u))).run();
+    store.updateNote(note.id, { keepCurrent: { ...kc, checkedAt: u.at, update: null } });
+    if (add) toast("Added to the end of the note. Undo with ⌘Z / Ctrl+Z if it's not right.");
+  };
+
   const applyTemplate = (t: (typeof TEMPLATES)[number]) => {
     if (!editor) return;
     editor.commands.setContent(plainToHtml(t.body()), { emitUpdate: true });
@@ -692,6 +758,15 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
               }} />
               <MenuItem icon="print" label="Print" onSelect={() => { close(); print(); }} />
               <MenuSep />
+              {note.keepCurrent ? (
+                <>
+                  <MenuItem icon="search" label={checking ? "Checking the web…" : "Check for changes now"} onSelect={() => { close(); if (!checking && note.keepCurrent) void checkNow(note.keepCurrent); }} />
+                  <MenuItem icon="x" label="Stop keeping current" onSelect={() => { close(); store.updateNote(note.id, { keepCurrent: null }); toast("This note won't be checked any more."); }} />
+                </>
+              ) : (
+                <MenuItem icon="repeat" label="Keep this note current" onSelect={() => { close(); void keepCurrentOn(); }} />
+              )}
+              <MenuSep />
               <MenuItem icon="trash" label="Delete note" danger onSelect={() => { close(); del(); }} />
             </>
           )}
@@ -774,6 +849,7 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
                     {AI_TASKS.map((t) => (
                       <MenuItem key={t.id} icon={t.icon} label={t.label} onSelect={() => { close(); void runAi(t.id); }} />
                     ))}
+                    <MenuItem icon="users" label="Interview me" onSelect={() => { close(); setAi(null); void askNext([]); }} />
                     <MenuSep />
                     <MenuItem icon="todo" label="Turn into to-dos…" onSelect={() => {
                       close();
@@ -916,6 +992,27 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
                 />
               )}
             </dd>
+            {note.keepCurrent && (
+              <>
+                <dt className="text-[var(--text-muted)]">Kept current</dt>
+                <dd className="flex flex-wrap items-center gap-2 text-[var(--text-secondary)]">
+                  <select
+                    aria-label="How often to check the web"
+                    value={note.keepCurrent.every}
+                    onChange={(e) => note.keepCurrent && store.updateNote(note.id, { keepCurrent: { ...note.keepCurrent, every: e.target.value as KeepCurrent["every"] } })}
+                    // Inline: .prop-input's full width would otherwise push the last check onto its own line.
+                    style={{ width: "auto" }}
+                    className="prop-input h-[26px] min-h-0 px-1.5 text-[13px]"
+                  >
+                    <option value="week">Checked weekly</option>
+                    <option value="month">Checked monthly</option>
+                  </select>
+                  <span className="text-[var(--text-muted)]">
+                    {checking ? "Checking now…" : (() => { const at = lastChecked(note); return at ? `Last checked ${ago(at, now)}` : "Not checked yet"; })()}
+                  </span>
+                </dd>
+              </>
+            )}
             {(linkedTodos.length > 0 || linkedTxs.length > 0) && (
               <>
                 <dt className="text-[var(--text-muted)]">Linked</dt>
@@ -947,6 +1044,77 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
             <img src={note.imageDataUrl} alt="Scanned source" className="max-h-56 self-start rounded-[var(--radius-control)] border border-[var(--border)]" />
           )}
 
+          {note.keepCurrent?.update?.changed && (
+            <section className="fn-rise card overflow-hidden" aria-label="Changes since you wrote this">
+              <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-5 py-3 text-sm font-medium">
+                <Icon name="repeat" size={15} className="text-[var(--warning)]" />
+                Since you wrote this
+                <span className="text-xs font-normal text-[var(--text-muted)]">checked {ago(note.keepCurrent.update.at, now)}</span>
+              </div>
+              <div className="flex flex-col gap-2 px-5 py-3 text-sm">
+                {note.keepCurrent.update.summary && <p className="text-[var(--text-secondary)]">{note.keepCurrent.update.summary}</p>}
+                <ul className="list-disc space-y-1 pl-5">{note.keepCurrent.update.changes.map((c) => <li key={c}>{c}</li>)}</ul>
+                {note.keepCurrent.update.sources.length > 0 && (
+                  <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
+                    {note.keepCurrent.update.sources.map((s) => (
+                      <a key={s.url} href={s.url} target="_blank" rel="noopener noreferrer" className="underline decoration-[var(--border-strong)] underline-offset-4 hover:text-[var(--foreground)]">{s.title}</a>
+                    ))}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-[var(--border-subtle)] px-4 py-3">
+                <button className="btn btn-primary btn-sm" onClick={() => applyUpdate(true)}>Add to note</button>
+                <button className="btn btn-plain btn-sm ml-auto" onClick={() => applyUpdate(false)}>Dismiss</button>
+              </div>
+            </section>
+          )}
+
+          {interview && (
+            <section className="fn-rise card overflow-hidden" aria-label="Interview">
+              <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-5 py-3 text-sm font-medium">
+                <Icon name="users" size={15} className="text-[var(--accent)]" />
+                Interview
+                <span className="text-xs font-normal text-[var(--text-muted)]">
+                  {interview.answers.length ? `${interview.answers.length} answered, up to ${INTERVIEW_MAX}` : "A few questions, then I write it up from your answers"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-3 px-5 py-4">
+                {interview.busy ? (
+                  <p className="flex items-center gap-2 text-sm text-[var(--text-secondary)]" role="status">
+                    <Icon name="sparkle" size={15} className="fn-dot text-[var(--accent)]" />
+                    {interview.question === null && interview.answers.length < INTERVIEW_MAX ? "Thinking of a question…" : "Writing it up…"}
+                  </p>
+                ) : interview.question ? (
+                  <>
+                    <p className="text-[15px] font-medium">{interview.question}</p>
+                    <textarea
+                      autoFocus
+                      value={interview.draft}
+                      onChange={(e) => setInterview({ ...interview, draft: e.target.value })}
+                      onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); answer(); } }}
+                      placeholder="Your answer, as rough as you like"
+                      aria-label="Your answer"
+                      className="field min-h-20 resize-none leading-relaxed [field-sizing:content]"
+                    />
+                  </>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">Ready to write it up from your answers.</p>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 border-t border-[var(--border-subtle)] px-4 py-3">
+                {interview.question && (
+                  <button className="btn btn-primary btn-sm" onClick={answer} disabled={interview.busy || !interview.draft.trim()}>
+                    {interview.answers.length + 1 >= INTERVIEW_MAX ? "Answer and write it up" : "Next question"}
+                  </button>
+                )}
+                <button className="btn btn-secondary btn-sm" onClick={() => void writeUp(interview.answers)} disabled={interview.busy || !interview.answers.length}>
+                  Write the note
+                </button>
+                <button className="btn btn-plain btn-sm ml-auto" onClick={() => setInterview(null)}>Stop</button>
+              </div>
+            </section>
+          )}
+
           {aiBusy && (
             <div className="card flex items-center gap-2 rounded-[var(--radius-control)] px-4 py-3 text-sm text-[var(--text-secondary)]" role="status">
               <Icon name="sparkle" size={16} className="fn-dot text-[var(--accent)]" />
@@ -957,8 +1125,8 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
             <section className="fn-rise card overflow-hidden" aria-label="AI suggestion">
               <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] px-5 py-3 text-sm font-medium">
                 <Icon name="sparkle" size={15} className="text-[var(--accent)]" />
-                {AI_TASKS.find((t) => t.id === ai.task)?.result}
-                <span className="text-xs font-normal text-[var(--text-muted)]">{ai.range ? "of the selected text" : "of this note"}</span>
+                {RESULT_LABEL[ai.task]}
+                <span className="text-xs font-normal text-[var(--text-muted)]">{ai.task === "interview" ? "from your answers" : ai.range ? "of the selected text" : "of this note"}</span>
               </div>
               <div className="fn-editor fn-editor-preview max-h-72 overflow-y-auto px-5 py-3" dangerouslySetInnerHTML={{ __html: plainToHtml(ai.text) }} />
               <div className="flex flex-wrap gap-2 border-t border-[var(--border-subtle)] px-4 py-3">
@@ -1011,7 +1179,7 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
       </div>
 
       {/* Footer: length and age on the left; the assistant's corner pill keeps the right edge clear. */}
-      <div className={`flex min-h-[52px] shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] pl-4 pr-[172px] text-xs text-[var(--text-muted)] sm:pr-[196px] md:pl-6 ${focusMode ? "pb-[env(safe-area-inset-bottom)]" : ""}`}>
+      <div className={`flex min-h-[52px] shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] pl-4 pr-[172px] text-xs text-[var(--text-muted)] sm:pr-[196px] md:pl-6 ${focusMode ? "pb-[env(safe-area-inset-bottom)]" : "max-md:mb-[var(--tabbar-space)]"}`}>
         <span className="fn-num whitespace-nowrap">{words} word{words === 1 ? "" : "s"}</span>
         <span aria-hidden className="max-sm:hidden">·</span>
         <span className="truncate max-sm:hidden">Edited {ago(note.updatedAt, now)}</span>

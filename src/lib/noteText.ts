@@ -7,9 +7,10 @@
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** **bold** and *italic*, the only inline markdown the assistant writes. */
+/** **bold**, *italic* and [web links](https://…), the only inline markdown the assistant writes. */
 const inline = (s: string) =>
   esc(s)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)"]+)\)/g, '<a href="$2">$1</a>')
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1<em>$2</em>");
 

@@ -1,7 +1,7 @@
 // Shared data model. Keep this file free of browser/server-only imports so it
 // can later be copied into a shared package for the mobile and Mac apps.
 
-export type Tab = "today" | "notes" | "todo" | "finance";
+export type Tab = "today" | "notes" | "todo" | "finance" | "transcribe";
 
 export interface BaseItem {
   id: string;
@@ -14,6 +14,23 @@ export interface BaseItem {
 
 export type NoteSource = "manual" | "chat" | "ocr" | "recording" | "share";
 
+/** What a "keep current" check found has changed since the note was written. */
+export interface NoteUpdate {
+  at: string; // ISO, when it was checked
+  changed: boolean;
+  summary: string;
+  changes: string[];
+  sources: { title: string; url: string }[];
+}
+
+/** A note the assistant re-checks against the web now and then (Claude only: it needs web search). */
+export interface KeepCurrent {
+  every: "week" | "month";
+  checkedAt?: string | null; // ISO, the last check (or when it was turned on)
+  /** The last check's changes, until they're added to the note or dismissed. */
+  update?: NoteUpdate | null;
+}
+
 export interface Note extends BaseItem {
   title: string;
   content: string; // plain text / light markdown: what search, the AI and the brief read
@@ -22,6 +39,7 @@ export interface Note extends BaseItem {
   source: NoteSource;
   tags: string[];
   imageDataUrl?: string; // thumbnail of the scanned page (local only for now)
+  keepCurrent?: KeepCurrent | null;
 }
 
 export type Priority = "low" | "medium" | "high";
@@ -48,6 +66,13 @@ export interface Todo extends BaseItem {
   rrule?: string | null; // subset of RFC 5545, e.g. "FREQ=MONTHLY;INTERVAL=1"
   bill?: Bill | null;
   noteId?: string | null; // link back to the note it came from
+  /** How often the due date was pushed later, and when last: a task that keeps slipping is "stuck". */
+  postponed?: { count: number; at: string } | null;
+  /** Not flagged as stuck again before this (ISO): "not now". */
+  stuckUntil?: string | null;
+  /** Chores: the people taking turns, in order, and whose turn this one is. */
+  rotation?: string[] | null;
+  assignee?: string | null;
 }
 
 /** Built-in categories. Users can add their own (Finance → settings → Categories). */
@@ -100,6 +125,72 @@ export interface Sticky extends BaseItem {
   text: string;
   color: StickyColor;
   pinned?: boolean; // pinned stickies show in the daily brief
+}
+
+// ---- Talks (Transcribe) ---------------------------------------------------------------
+// A recorded conversation: in person (one microphone), or a call or meeting (your microphone
+// plus the call's sound from a tab or app). Kept in this browser (IndexedDB, see
+// lib/talks/db.ts), with its audio; "Save to Notes" puts it where sync reaches.
+
+/**
+ * Who said a line. "me": your microphone on a call. "them": the call's side, as one voice.
+ * "room": someone in person, when the transcriber can't tell voices apart. A letter ("A",
+ * "B", or "them:A" on a call's side) when it can.
+ */
+export type SpeakerId = string;
+
+export interface TalkSegment {
+  speaker: SpeakerId;
+  start: number; // seconds from the start of the talk
+  end: number;
+  text: string;
+}
+
+/** One stretch of one channel, sent to be transcribed. */
+export interface TalkChunk {
+  channel: "me" | "them" | "room";
+  start: number;
+  end: number;
+  status: "queued" | "done" | "failed" | "silent";
+  segments?: TalkSegment[];
+}
+
+export interface TalkSummary {
+  text: string;
+  keyPoints: string[];
+  actionItems: string[];
+  /** A short profile of each person in this talk: what they said, wanted, agreed to. */
+  people: { speaker: SpeakerId; profile: string }[];
+}
+
+export interface Talk {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  spaceId?: string | null;
+  title: string;
+  mode: "room" | "call" | "upload";
+  /** What was recorded, as the user named it or the shared tab said: "Google Meet", "WhatsApp". */
+  app?: string | null;
+  lang: string; // BCP 47, e.g. "en-US", "id-ID"
+  duration: number; // seconds
+  status: "recording" | "transcribing" | "done";
+  /** Which engine wrote the final transcript, for the note under it. */
+  engine?: "stt" | "audio" | "device" | "browser" | null;
+  /** Why some or all of it couldn't be transcribed on the server, in words. */
+  problem?: string | null;
+  chunks: TalkChunk[];
+  /** The browser's live captions: the fallback for stretches the server couldn't do. */
+  live: TalkSegment[];
+  /** The transcript, once the talk is finished. */
+  segments: TalkSegment[];
+  /** Names given to speakers ("A" → "Andi"). Giving two speakers the same name merges them. */
+  names: Record<SpeakerId, string>;
+  summary?: TalkSummary | null;
+  noteId?: string | null;
+  /** The recording is kept in this browser and can be played back. */
+  hasAudio?: boolean;
 }
 
 export interface MonthlySummary {
@@ -156,6 +247,8 @@ export type AIAction =
       rrule?: string | null;
       bill?: Bill | null;
       noteRef?: string; // `ref` of a create_note in the same batch
+      /** A chore people take turns at; the first name goes first. */
+      rotation?: string[];
     }
   | {
       type: "add_transaction";
@@ -203,7 +296,7 @@ export interface AnswerSource {
 }
 
 export interface CaptureResult {
-  kind: "receipt" | "ticket" | "handwritten_note" | "todo_list" | "other";
+  kind: "receipt" | "ticket" | "chat" | "handwritten_note" | "todo_list" | "other";
   reply: string;
   actions: AIAction[];
   demo?: boolean;
@@ -217,7 +310,7 @@ export interface ClientContext {
   notes: { title: string; snippet: string }[];
   /** Full text of the notes most relevant to the question (retrieval / RAG). */
   relevantNotes?: { title: string; content: string; updatedAt: string }[];
-  todos: { title: string; done: boolean; doing?: boolean; dueAt?: string | null; rrule?: string | null }[];
+  todos: { title: string; done: boolean; doing?: boolean; dueAt?: string | null; rrule?: string | null; assignee?: string }[];
   transactions: { merchant: string; amount: number; category: string; date: string }[];
   budgets?: Partial<Record<ExpenseCategory, number>>;
   categories?: string[];

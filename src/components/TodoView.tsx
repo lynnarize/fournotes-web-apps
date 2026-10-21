@@ -11,8 +11,11 @@ import { useNow } from "@/lib/hooks";
 import { openItem, scrollToId, useOpenItem } from "@/lib/nav";
 import { makeRrule, normaliseRrule, parseRrule, rruleLabel, type Freq } from "@/lib/recurrence";
 import { alive, formatMoney, parseAmount, useStore } from "@/lib/store";
+import { peopleIn, usePeople } from "@/lib/people";
+import { isMe, parseRotation, turnLabel, turnMessageUrl } from "@/lib/tasks";
 import type { ExpenseCategory, Todo } from "@/lib/types";
 import EmptyStart from "./EmptyStart";
+import StuckTasks from "./StuckTasks";
 import { Icon, useToast } from "./ui";
 
 const PRIORITY_LABEL = { high: "High priority", medium: "Medium priority", low: "Low priority" };
@@ -28,12 +31,13 @@ const DONE_SHOWN = 30;
 const DAY = 86_400_000;
 
 // ---- Filters (narrow the board; they never change a task) ---------------------------
-type Filter = "all" | "week" | "repeat" | "bills" | "linked";
+type Filter = "all" | "week" | "repeat" | "bills" | "chores" | "linked";
 const FILTERS: { id: Filter; label: string; test: (t: Todo, now: number) => boolean }[] = [
   { id: "all", label: "All", test: () => true },
   { id: "week", label: "Due this week", test: (t, now) => !!t.dueAt && Date.parse(t.dueAt) < now + 7 * DAY },
   { id: "repeat", label: "Repeating", test: (t) => !!t.rrule },
   { id: "bills", label: "Bills", test: (t) => !!t.bill },
+  { id: "chores", label: "Taking turns", test: (t) => !!t.rotation?.length },
   { id: "linked", label: "Linked to a note", test: (t) => !!t.noteId },
 ];
 
@@ -259,10 +263,12 @@ export default function TodoView() {
           </div>
         )}
 
+        <StuckTasks now={now} />
+
         {live.length === 0 ? (
           <EmptyStart
             title="Nothing to do yet"
-            hint="Press New task, or ask the assistant. It understands dates, reminders and repeats."
+            hint="Press New task, or ask the assistant. It understands dates, reminders and repeats. Scan a chat screenshot to turn its plans into tasks."
             prompts={["Remind me to pay rent every month on the 5th at 9am", "Call the dentist tomorrow at 10am"]}
           />
         ) : (
@@ -398,6 +404,7 @@ function TodoCard({ todo, now, mobile, selected, onOpen, onDragStart, onDragEnd,
       meta.push({ key: "remind", icon: "bell", text: sameDay ? clock(todo.remindAt) : when(todo.remindAt, now), title: `Reminder ${when(todo.remindAt, now)}` });
     }
     if (todo.priority !== "medium") meta.push({ key: "priority", icon: "flag", text: todo.priority === "high" ? "High" : "Low", title: PRIORITY_LABEL[todo.priority] });
+    if (todo.assignee) meta.push({ key: "turn", icon: "users", text: turnLabel(todo.assignee, settings.name), title: `Taking turns: ${todo.rotation?.join(", ")}` });
   }
   if (note) meta.push({ key: "note", icon: "link", text: note.title || "Note", title: "Linked note" });
   const badge = status && <span className={`badge badge-dot ${status.tone === "danger" ? "badge-danger" : "badge-warning"}`}>{status.text}</span>;
@@ -449,7 +456,7 @@ function TodoCard({ todo, now, mobile, selected, onOpen, onDragStart, onDragEnd,
                   <span key={m.key} className="text-xs text-[var(--text-muted)]">{m.text}</span>
                 ) : (
                   <Chip key={m.key} icon={m.icon} title={m.title}>
-                    <span className={m.key === "note" ? "max-w-[10rem] truncate" : "fn-num"}>{m.text}</span>
+                    <span className={m.key === "note" || m.key === "turn" ? "max-w-[10rem] truncate" : "fn-num"}>{m.text}</span>
                   </Chip>
                 ),
               )}
@@ -493,8 +500,10 @@ function TaskPanel({ todo, isNew, expanded, mobile, anim, onToggleExpand, onClos
   todo: Todo; isNew: boolean; expanded: boolean; mobile: boolean; anim: PanelAnim;
   onToggleExpand: () => void; onClose: () => void; onMove: (to: Status) => void;
 }) {
-  const { updateTodo, remove, notes, todos, categories, settings } = useStore();
+  const { updateTodo, remove, notes, todos, transactions, categories, settings } = useStore();
   const toast = useToast();
+  // Who the task is about: what your notes say about them is a tap away, before you start.
+  const about = peopleIn(`${todo.title} ${todo.notes ?? ""}`, usePeople({ notes, todos, transactions }));
   const [suggestion, setSuggestion] = useState<{ at: string; reason: string } | null>(null);
   const note = todo.noteId ? notes.find((n) => n.id === todo.noteId && !n.deletedAt) : undefined;
   const rule = parseRrule(todo.rrule);
@@ -512,7 +521,9 @@ function TaskPanel({ todo, isNew, expanded, mobile, anim, onToggleExpand, onClos
   // What finishing the task will do, said once under its properties.
   const consequence = todo.bill
     ? `Finishing it logs ${billText}${todo.rrule ? ", then schedules the next one." : "."}`
+    : todo.rrule && todo.rotation?.length ? `${rruleLabel(todo.rrule)}. Finishing it passes the next one to whoever's turn is next.`
     : todo.rrule ? `${rruleLabel(todo.rrule)}. Finishing it schedules the next one.` : "";
+  const nudge = !todo.done && todo.assignee && !isMe(todo.assignee, settings.name);
   const del = () => {
     const id = todo.id;
     remove("todos", id);
@@ -566,6 +577,19 @@ function TaskPanel({ todo, isNew, expanded, mobile, anim, onToggleExpand, onClos
               expanded && !mobile ? "fn-display text-[32px]" : "text-[22px] font-medium leading-tight tracking-[-0.02em]"
             } ${todo.done ? "text-[var(--text-muted)] line-through" : ""}`}
           />
+
+          {about.length > 0 && (
+            <div className="-mt-2 flex flex-wrap items-center gap-1.5 text-[13px] text-[var(--text-muted)]">
+              About
+              {about.map((p) => (
+                <button key={p.key} onClick={() => openItem("person", p.key)} title={`What your notes say about ${p.name}`}
+                  className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-[var(--border)] px-2.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--foreground)] max-md:h-9"
+                >
+                  <Icon name="users" size={13} /> {p.name}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div role="radiogroup" aria-label="Status" className="seg flex">
             {COLUMNS.map((c) => (
@@ -630,6 +654,28 @@ function TaskPanel({ todo, isNew, expanded, mobile, anim, onToggleExpand, onClos
                 </label>
               )}
             </Prop>
+            <Prop label="Turns">
+              <input
+                key={(todo.rotation ?? []).join(",")}
+                defaultValue={(todo.rotation ?? []).join(", ")}
+                placeholder="Just me"
+                aria-label="People taking turns, separated by commas"
+                title="People who take turns at this, in order, e.g. Me, Andi, Budi. Finishing it passes it to whoever's next."
+                onBlur={(e) => {
+                  const people = parseRotation(e.target.value);
+                  const shared = people.length > 1;
+                  const keep = todo.assignee && people.find((p) => p.toLowerCase() === todo.assignee!.toLowerCase());
+                  updateTodo(todo.id, { rotation: shared ? people : null, assignee: shared ? keep || people[0] : null });
+                }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                className="prop-input min-w-0 flex-1 basis-32"
+              />
+              {todo.rotation?.length ? (
+                <select aria-label="Whose turn" value={todo.assignee ?? ""} onChange={(e) => updateTodo(todo.id, { assignee: e.target.value })} className="prop-input w-auto">
+                  {todo.rotation.map((p) => <option key={p} value={p}>{turnLabel(p, settings.name)}</option>)}
+                </select>
+              ) : null}
+            </Prop>
             <Prop label="Priority">
               <select value={todo.priority} aria-label="Priority" onChange={(e) => updateTodo(todo.id, { priority: e.target.value as Todo["priority"] })} className="prop-input w-auto">
                 <option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option>
@@ -676,6 +722,12 @@ function TaskPanel({ todo, isNew, expanded, mobile, anim, onToggleExpand, onClos
             </Prop>
           </div>
           {consequence && <p className="-mt-2 text-xs text-[var(--text-muted)]">{consequence}</p>}
+          {nudge && (
+            // Drafted, never sent: WhatsApp opens with the message and the user picks who gets it.
+            <button className="btn btn-secondary btn-sm -mt-2 self-start max-md:h-11" onClick={() => window.open(turnMessageUrl(todo, todo.dueAt ? when(todo.dueAt) : undefined), "_blank", "noopener")}>
+              <Icon name="send" size={14} /> Remind {todo.assignee} on WhatsApp
+            </button>
+          )}
 
           <div className="flex flex-col gap-2">
             <p className="text-[13px] text-[var(--text-muted)]">Add to calendar</p>

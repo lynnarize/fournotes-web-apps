@@ -30,6 +30,7 @@ import type {
 } from "./types";
 import { localIso } from "./client";
 import { quickNote } from "./quickNote";
+import { nextInRotation, postponedAfter } from "./tasks";
 
 // ---------------------------------------------------------------------------
 // Persistence adapter. The app always saves locally first (instant UI, works
@@ -268,6 +269,8 @@ export function StoreProvider({ children, adapter = localAdapter }: { children: 
           addTodo({
             title: t.title, notes: t.notes, priority: t.priority, source: t.source, rrule, bill: t.bill,
             noteId: t.noteId, spaceId: t.spaceId ?? null, dueAt, remindAt: nextRemind, reminded: false,
+            // A chore goes to whoever's turn is next.
+            ...(t.rotation?.length ? { rotation: t.rotation, assignee: nextInRotation(t, dataRef.current.todos) } : {}),
           });
           out.push(`🔁 Next: ${t.title}`);
         }
@@ -278,7 +281,11 @@ export function StoreProvider({ children, adapter = localAdapter }: { children: 
     return {
       addNote, addTodo, addTransaction, addSticky, toggleTodo,
       updateNote: (id: string, p: Partial<Note>) => patchList("notes", id, p),
-      updateTodo: (id: string, p: Partial<Todo>) => patchList("todos", id, p),
+      updateTodo: (id: string, p: Partial<Todo>) => {
+        // Moving the due date later counts towards "stuck" (see lib/tasks.ts).
+        const t = p.dueAt !== undefined && p.postponed === undefined ? dataRef.current.todos.find((x) => x.id === id) : undefined;
+        patchList("todos", id, t ? { ...p, postponed: postponedAfter(t, p.dueAt) } : p);
+      },
       updateTransaction: (id: string, p: Partial<Transaction>) => patchList("transactions", id, p),
       updateSticky: (id: string, p: Partial<Sticky>) => patchList("stickies", id, p),
       // Soft delete keeps a tombstone so sync can propagate deletions.
@@ -415,6 +422,7 @@ export function StoreProvider({ children, adapter = localAdapter }: { children: 
                 priority: a.priority ?? "medium", source, rrule: a.rrule ?? null, bill: a.bill ?? null,
                 doing: a.status === "doing" || undefined,
                 noteId: (a.noteRef && refs.get(a.noteRef)) || fallbackNote(),
+                ...(a.rotation?.length ? { rotation: a.rotation, assignee: a.rotation[0] } : {}),
               });
               file(`${a.rrule ? "🔁" : a.status === "doing" ? "▶️" : "✅"} ${a.status === "doing" ? "Doing" : "To-do"}: ${a.title}`, { kind: "todos", id: todo.id });
               break;
@@ -487,7 +495,7 @@ export function StoreProvider({ children, adapter = localAdapter }: { children: 
           currency: d.settings.currency,
           notes: live(d.notes).slice(0, 30).map((n) => ({ title: n.title, snippet: n.content.slice(0, 240) })),
           relevantNotes: relevantNotes?.map((n) => ({ title: n.title, content: n.content.slice(0, 3000), updatedAt: n.updatedAt })),
-          todos: live(d.todos).slice(0, 50).map((t) => ({ title: t.title, done: t.done, doing: t.doing || undefined, dueAt: t.dueAt, rrule: t.rrule })),
+          todos: live(d.todos).slice(0, 50).map((t) => ({ title: t.title, done: t.done, doing: t.doing || undefined, dueAt: t.dueAt, rrule: t.rrule, assignee: t.assignee ?? undefined })),
           transactions: live(d.transactions).slice(0, 80).map((t) => ({ merchant: t.merchant, amount: t.amount, category: t.category, date: t.date })),
           budgets: d.settings.budgets,
           categories: categoriesOf(d.settings),

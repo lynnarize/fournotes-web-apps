@@ -171,7 +171,7 @@ export default function TodayView({ setTab }: { setTab: (t: Tab) => void }) {
 
   // While you chat, the card takes the brief's place under the greeting; the rest of Today stays.
   return (
-    <div className={`mx-auto flex w-full max-w-[1180px] flex-wrap items-start gap-10 pt-5 md:pb-12 ${todayChat ? "pb-6 md:pt-10" : "pb-[136px] md:pt-[72px]"}`}>
+    <div className={`mx-auto flex w-full max-w-[1180px] flex-wrap items-start gap-10 pt-5 md:pb-12 ${todayChat ? "pb-6 max-md:pb-[calc(var(--tabbar-space)+24px)] md:pt-10" : "pb-[136px] max-md:pb-[calc(var(--tabbar-space)+136px)] md:pt-[72px]"}`}>
       <div className="flex min-w-0 flex-[999_1_480px] flex-col gap-6">
         <div className="flex flex-col gap-2.5 md:gap-3">
           <p className="text-[14px] text-[var(--text-secondary)]">{now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>

@@ -140,6 +140,13 @@ alter table transactions add column if not exists splits jsonb;          -- [{ n
 alter table transactions add column if not exists note_id uuid;
 alter table stickies add column if not exists pinned boolean not null default false;
 
+-- Columns added with stuck tasks, chores and notes kept current
+alter table todos add column if not exists postponed jsonb;              -- { count, at }: how often the due date was pushed later
+alter table todos add column if not exists stuck_until timestamptz;      -- "not now" on a stuck task
+alter table todos add column if not exists rotation jsonb;               -- chores: ["Me", "Andi", "Budi"], taking turns
+alter table todos add column if not exists assignee text;                -- whose turn this one is
+alter table notes add column if not exists keep_current jsonb;           -- { every, checkedAt, update }
+
 create index if not exists todos_remind_idx on todos (remind_at) where done = false and reminded = false and deleted_at is null;
 create index if not exists transactions_month_idx on transactions (user_id, date);
 
