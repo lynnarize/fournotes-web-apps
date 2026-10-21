@@ -457,10 +457,11 @@ export class OpenRouterProvider implements LLMProvider {
     ];
     let res: Completion;
     try {
-      res = await this.complete({ model, max_tokens: 3072, messages, tools, tool_choice: { type: "function", function: { name: "respond" } } });
+      // Reasoning models think before they answer: room for both, or the JSON comes back cut off.
+      res = await this.complete({ model, max_tokens: 8192, messages, tools, tool_choice: { type: "function", function: { name: "respond" } } });
     } catch (e) {
       if (!(e instanceof ProviderError) || e.status >= 500 || e.status === 429) throw e;
-      res = await this.complete({ model, max_tokens: 3072, messages, tools, tool_choice: "auto" });
+      res = await this.complete({ model, max_tokens: 8192, messages, tools, tool_choice: "auto" });
     }
     const message = res.choices?.[0]?.message;
     const call = message?.tool_calls?.[0];

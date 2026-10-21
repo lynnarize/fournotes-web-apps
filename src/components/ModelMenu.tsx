@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { ANTHROPIC_USER_MODELS, OPENCODE_GO_MODELS, OPENROUTER_FREE_MODELS } from "@/lib/ai/models";
 import { serverStatus, type ServerStatus } from "@/lib/aiRoute";
 import { activeProvider, saveUserKeys, useUserKeys, type AiProvider, type UserKeys } from "@/lib/byok";
-import { ON_DEVICE_MODEL, onDeviceInUse, useOnDevice } from "@/lib/ai/onDevice";
+import { chooseOnDevice, ON_DEVICE_MODEL, onDeviceChosen, onDeviceInUse, onDeviceScope, useOnDevice } from "@/lib/ai/onDevice";
 import { openSettings } from "@/lib/nav";
 import { Dropdown, MenuItem, MenuLabel, MenuSep } from "./notes/Dropdown";
 import { Icon } from "./ui";
@@ -53,6 +53,8 @@ const slugName = (id: string) => (id.split("/").pop() ?? id).replace(/-a?\d+(\.\
 export type ModelChoice = { name: string; tier: string };
 
 export function pickedModel(keys: UserKeys, server: ServerStatus | null): ModelChoice | null {
+  // Picked over the cloud in this menu, as the macOS app's On-device / Cloud choice.
+  if (onDeviceChosen()) return { name: "On this device", tier: "" };
   const own = activeProvider(keys);
   const claude = (id?: string) => ({ name: "Claude", tier: claudeName(id).replace(/^Claude\s*/, "") });
   if (own === "anthropic") return claude(keys.anthropicModel ?? server?.model);
@@ -68,6 +70,9 @@ export function pickedModel(keys: UserKeys, server: ServerStatus | null): ModelC
   if (onDeviceInUse()) return { name: "On this device", tier: "" };
   return { name: "Demo mode", tier: "" };
 }
+
+/** Is there a model in the cloud to use: a key of the user's, or the server's? */
+const hasCloud = (keys: UserKeys, server: ServerStatus | null) => activeProvider(keys) || server?.anthropic || server?.openrouter;
 
 /** "Claude Sonnet 5", "Ling 3.0": what the line above a reply calls the model. */
 export const choiceName = (c: ModelChoice | null) => (!c ? "" : c.name === "Claude" ? `Claude ${c.tier}`.trim() : c.name);
@@ -111,14 +116,27 @@ export default function ModelMenu() {
   useEffect(() => { serverStatus().then(setServer); }, []);
   const onDevice = useOnDevice();
   const own = activeProvider(keys);
-  const save = (patch: Partial<UserKeys>) => saveUserKeys({ ...keys, ...patch }, persist);
+  // Any cloud model picked here takes over from the on-device one again.
+  const save = (patch: Partial<UserKeys>) => { chooseOnDevice("cloud"); saveUserKeys({ ...keys, ...patch }, persist); };
   const pick = (provider: AiProvider, patch: Partial<UserKeys>) => save({ ...patch, aiProvider: provider });
+  const device = onDevice.forced && onDevice.inUse;
+  const cloud = Boolean(hasCloud(keys, server));
+  // Always offered on a computer, with what stands in the way when it can't answer yet;
+  // phones without the model don't get a choice they can never use.
+  const phone = typeof navigator !== "undefined" && /Android|iPhone|iPad/i.test(navigator.userAgent);
+  const offerDevice = !onDevice.off && !(phone && (onDevice.availability === "unsupported" || onDevice.availability === "unavailable"));
+  const deviceHint =
+    onDevice.availability === "checking" ? "Checking…"
+    : onDevice.availability === "unsupported" ? "Not in this browser"
+    : onDevice.availability === "unavailable" ? "Can't run here"
+    : onDevice.download.phase !== "idle" || onDevice.availability === "downloading" ? "Downloading…"
+    : "Download, 4 GB";
 
   const choice = pickedModel(keys, server);
   if (!choice) return null;
   const orPaid = keys.openrouterTier === "paid" && keys.openrouterPaidModel;
   const hasOwn = Boolean(keys.anthropicKey || keys.opencodeKey || keys.openrouterKey);
-  const on = (provider: AiProvider | null, active: boolean) => own === provider && active;
+  const on = (provider: AiProvider | null, active: boolean) => !device && own === provider && active;
 
   return (
     <Dropdown
@@ -141,6 +159,35 @@ export default function ModelMenu() {
     >
       {(close) => (
         <>
+          {offerDevice && (
+            <>
+              <MenuLabel>On this device</MenuLabel>
+              {onDevice.availability === "available" ? (
+                <>
+                  <MenuItem
+                    icon="monitor"
+                    label="Chrome's model"
+                    hint="Private"
+                    active={device || (!cloud && onDevice.inUse)}
+                    onSelect={() => { close(); chooseOnDevice("device"); }}
+                  />
+                  {device && cloud && (
+                    <p className="px-3 pb-1.5 text-xs leading-snug text-[var(--text-muted)]">{onDeviceScope(onDevice)}</p>
+                  )}
+                </>
+              ) : (
+                // Not ready: Settings says why (download it, or what this browser or computer lacks).
+                <MenuItem
+                  icon={onDevice.availability === "downloadable" ? "download" : "monitor"}
+                  label="Chrome's model"
+                  hint={deviceHint}
+                  onSelect={() => { close(); openSettings("api"); }}
+                />
+              )}
+              {cloud && <MenuSep />}
+              {cloud && <MenuLabel>Cloud</MenuLabel>}
+            </>
+          )}
           {keys.anthropicKey && (
             <>
               <MenuLabel>Claude, your key</MenuLabel>
@@ -175,14 +222,14 @@ export default function ModelMenu() {
           {!hasOwn && server?.anthropic && (
             <>
               <MenuLabel>This app&apos;s Claude</MenuLabel>
-              <MenuItem label={claudeName(server.model)} active onSelect={close} />
+              <MenuItem label={claudeName(server.model)} active={!device} onSelect={() => { close(); chooseOnDevice("cloud"); }} />
             </>
           )}
           {!hasOwn && !server?.anthropic && server?.openrouter && (
             <>
               <MenuLabel>Free models, limited each day</MenuLabel>
               {FREE.map((m) => (
-                <MenuItem key={m.id} label={m.name} active={freeName(keys.sharedModel ?? server.openrouterModel) === m.name}
+                <MenuItem key={m.id} label={m.name} active={!device && freeName(keys.sharedModel ?? server.openrouterModel) === m.name}
                   onSelect={() => { close(); save({ sharedModel: m.id }); }} />
               ))}
             </>
@@ -190,7 +237,7 @@ export default function ModelMenu() {
           {!hasOwn && !server?.anthropic && !server?.openrouter && (
             <p className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
               {onDevice.inUse
-                ? "No AI key yet: Chrome's built-in model answers, on this device. Add a free key for a stronger model and photo reading."
+                ? `No AI key yet: Chrome's built-in model answers, on this device. Add a free key for a stronger model${onDevice.sees ? "" : " and photo reading"}.`
                 : "No AI key yet: replies are simple and rule-based. Add a free key for the full assistant."}
             </p>
           )}

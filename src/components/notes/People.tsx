@@ -115,7 +115,7 @@ export function PersonPage({ person, onBack }: { person: Person; onBack?: () => 
           <Icon name="sparkle" size={15} /> Ask about {person.name.split(" ")[0]}
         </button>
       </div>
-      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-[clamp(16px,4vw,40px)] pb-12 pt-8 md:pt-10">
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-[clamp(16px,4vw,40px)] pb-12 pt-8 md:pt-10 max-md:pb-[calc(var(--tabbar-space)+64px)]">
         <article className="fn-note-in mx-auto flex w-full max-w-[680px] flex-col gap-8">
           <header className="flex items-center gap-4">
             <span aria-hidden className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[var(--surface-muted)] text-2xl font-medium">{person.name[0]?.toUpperCase()}</span>

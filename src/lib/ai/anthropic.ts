@@ -170,7 +170,7 @@ export class AnthropicProvider implements LLMProvider {
   async agent(system: string, prompt: string, schema: Record<string, unknown>, fast: boolean) {
     const res = await this.client.messages.create({
       model: fast ? this.fastModel : this.model,
-      max_tokens: 2048,
+      max_tokens: 4096,
       system,
       tools: [{ name: "respond", description: "Give the result.", input_schema: schema as Anthropic.Tool.InputSchema }],
       tool_choice: { type: "tool", name: "respond" },

@@ -15,6 +15,8 @@ import { activeNoteId } from "@/lib/activeNote";
 import { agrees, answerOnly, groundAmounts, isQuestion, noteQuestion, savesPreviousReply } from "@/lib/intent";
 import { isWorthSaving, noteContentFromReply, offersToSave, replyNoteTitle } from "@/lib/replyNote";
 import { useStore, type ChangeLink, type ListKind } from "@/lib/store";
+import { allTalks, talksReady } from "@/lib/talks/db";
+import { talkPassages } from "@/lib/talks/transcript";
 import type { AIAction, AnswerSource, ChatMessage, Note, NoteSource, Tab } from "@/lib/types";
 import { citations, renumbered, sourcesText, withoutCitations } from "./assistant/cite";
 import { choiceName, modelDisplayName, pickedModel } from "./ModelMenu";
@@ -187,6 +189,9 @@ function namedNotes(notes: Note[], text: string): Note[] {
   return out;
 }
 
+/** A question about something said: recorded talks are searched even on a weak match. */
+const ABOUT_TALKS = /\b(talks?|calls?|meetings?|conversations?|said|say|says|told|discuss(ed)?|interview|rapat|obrolan|ngobrol|bilang|kata(nya)?|telepon|nelpon|diskusi)\b/i;
+
 const TAB_OF: Record<string, Tab | undefined> = { notes: "notes", todos: "todo", transactions: "finance", budget: "finance", stickies: "today" };
 
 const OUTBOX = "four-notes:outbox";
@@ -290,7 +295,12 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
       const s = storeRef.current;
       const relevant = await semanticNotes(s.notes, text, 4).catch(() => []);
       const named = namedNotes(s.notes, text);
-      const picked = [...named, ...relevant.filter((r) => r.score > 0.2 && !named.includes(r.note)).map((r) => r.note)].slice(0, 5);
+      // Recorded talks (Transcribe): the stretches of conversation that best match, beside the notes.
+      await talksReady();
+      const space = s.currentSpaceId;
+      const talkHits = talkPassages(allTalks().filter((t) => (t.spaceId ?? null) === space), text, 2)
+        .filter((p) => p.score >= 1.5 || ABOUT_TALKS.test(text));
+      const picked = [...named, ...relevant.filter((r) => r.score > 0.2 && !named.includes(r.note)).map((r) => r.note)].slice(0, 5 - talkHits.length);
       // A question or a request for ideas is answered, never filed.
       const question = answerOnly(text);
       // A question is answered from numbered items of the user's own data, which the answer cites as [n].
@@ -302,6 +312,13 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
           )
         : [];
       const context = s.buildContext(picked, dataSources);
+      if (talkHits.length) {
+        const day = (iso: string) => new Date(iso).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+        context.relevantNotes = [
+          ...(context.relevantNotes ?? []),
+          ...talkHits.map((p) => ({ title: `Recorded talk “${p.talk.title}”, ${day(p.talk.createdAt)}`, content: p.text, updatedAt: p.talk.createdAt })),
+        ];
+      }
       if (abort.signal.aborted) throw new DOMException("Stopped", "AbortError");
       const started = performance.now();
       const res = await api.chat(history, context, { tools: !question, signal: abort.signal });

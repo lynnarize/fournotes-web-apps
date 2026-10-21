@@ -1,7 +1,7 @@
 // Shared data model. Keep this file free of browser/server-only imports so it
 // can later be copied into a shared package for the mobile and Mac apps.
 
-export type Tab = "today" | "notes" | "todo" | "finance";
+export type Tab = "today" | "notes" | "todo" | "finance" | "transcribe";
 
 export interface BaseItem {
   id: string;
@@ -125,6 +125,72 @@ export interface Sticky extends BaseItem {
   text: string;
   color: StickyColor;
   pinned?: boolean; // pinned stickies show in the daily brief
+}
+
+// ---- Talks (Transcribe) ---------------------------------------------------------------
+// A recorded conversation: in person (one microphone), or a call or meeting (your microphone
+// plus the call's sound from a tab or app). Kept in this browser (IndexedDB, see
+// lib/talks/db.ts), with its audio; "Save to Notes" puts it where sync reaches.
+
+/**
+ * Who said a line. "me": your microphone on a call. "them": the call's side, as one voice.
+ * "room": someone in person, when the transcriber can't tell voices apart. A letter ("A",
+ * "B", or "them:A" on a call's side) when it can.
+ */
+export type SpeakerId = string;
+
+export interface TalkSegment {
+  speaker: SpeakerId;
+  start: number; // seconds from the start of the talk
+  end: number;
+  text: string;
+}
+
+/** One stretch of one channel, sent to be transcribed. */
+export interface TalkChunk {
+  channel: "me" | "them" | "room";
+  start: number;
+  end: number;
+  status: "queued" | "done" | "failed" | "silent";
+  segments?: TalkSegment[];
+}
+
+export interface TalkSummary {
+  text: string;
+  keyPoints: string[];
+  actionItems: string[];
+  /** A short profile of each person in this talk: what they said, wanted, agreed to. */
+  people: { speaker: SpeakerId; profile: string }[];
+}
+
+export interface Talk {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  spaceId?: string | null;
+  title: string;
+  mode: "room" | "call" | "upload";
+  /** What was recorded, as the user named it or the shared tab said: "Google Meet", "WhatsApp". */
+  app?: string | null;
+  lang: string; // BCP 47, e.g. "en-US", "id-ID"
+  duration: number; // seconds
+  status: "recording" | "transcribing" | "done";
+  /** Which engine wrote the final transcript, for the note under it. */
+  engine?: "stt" | "audio" | "device" | "browser" | null;
+  /** Why some or all of it couldn't be transcribed on the server, in words. */
+  problem?: string | null;
+  chunks: TalkChunk[];
+  /** The browser's live captions: the fallback for stretches the server couldn't do. */
+  live: TalkSegment[];
+  /** The transcript, once the talk is finished. */
+  segments: TalkSegment[];
+  /** Names given to speakers ("A" → "Andi"). Giving two speakers the same name merges them. */
+  names: Record<SpeakerId, string>;
+  summary?: TalkSummary | null;
+  noteId?: string | null;
+  /** The recording is kept in this browser and can be played back. */
+  hasAudio?: boolean;
 }
 
 export interface MonthlySummary {

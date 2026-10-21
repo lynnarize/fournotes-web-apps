@@ -63,7 +63,7 @@ export function middleware(request: NextRequest) {
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   // Microphone for recordings and voice mode, camera for scanning; nothing else.
-  response.headers.set("Permissions-Policy", "microphone=(self), camera=(self), geolocation=(), payment=(), usb=()");
+  response.headers.set("Permissions-Policy", "microphone=(self), camera=(self), display-capture=(self), geolocation=(), payment=(), usb=()");
   return response;
 }
 

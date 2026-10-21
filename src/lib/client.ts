@@ -58,6 +58,9 @@ export const api = {
   },
 
   captureImage: async (file: Blob, context: ClientContext) => {
+    // Read here when Chrome's model answers (chosen, no key, offline) and can look at images.
+    const local = await onDevice(async (m) => (m.onDeviceState().sees ? m.onDeviceCapture(file, context) : undefined));
+    if (local) return local;
     offlineGuard();
     const fd = new FormData();
     fd.append("file", file, "capture.jpg");

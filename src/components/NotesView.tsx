@@ -343,7 +343,7 @@ export default function NotesView() {
               People {people.length > 0 && <span className="fn-num font-normal text-[var(--text-muted)]">{people.length}</span>}
             </button>
           </div>
-          <div className="scroll-thin -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-24">
+          <div className="scroll-thin -mx-1 min-h-0 flex-1 overflow-y-auto px-1 pb-24 max-md:pb-[calc(var(--tabbar-space)+64px)]">
             {show === "people" && (
               <PeopleList people={shownPeople} selected={!mobile ? person?.key : undefined} onOpen={(k) => { setPersonKey(k); setMobileOpen(true); }} />
             )}

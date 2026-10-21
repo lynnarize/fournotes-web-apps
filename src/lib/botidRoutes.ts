@@ -13,4 +13,5 @@ export const BOTID_ROUTES = [
   "/api/ai/agent",
   "/api/ingest/image",
   "/api/ingest/audio",
+  "/api/transcribe",
 ].map((path) => ({ path, method: "POST" }));

@@ -29,7 +29,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "That request isn't in the expected shape." }, { status: 400 });
     }
     const provider = await getProvider(keys);
-    const out = agentResult(job, await provider.agent(ask.system, ask.prompt, agentSchema(job), ask.fast));
+    // Free models slip now and then: one more try before giving up.
+    const out =
+      agentResult(job, await provider.agent(ask.system, ask.prompt, agentSchema(job), ask.fast)) ??
+      agentResult(job, await provider.agent(ask.system, ask.prompt, agentSchema(job), ask.fast));
     if (!out) return NextResponse.json({ error: "The AI's answer wasn't usable. Try again." }, { status: 502 });
     return NextResponse.json(out);
   } catch (e) {

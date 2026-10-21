@@ -10,7 +10,7 @@ import {
   activeProvider, clearUserKeys, isValidKey, keyHeaders, maskKey, MODEL_OPTIONS, OPENCODE_GO_MODELS, OPENCODE_GO_URL, opencodeLabel, OPENROUTER_CREDITS_URL,
   OPENROUTER_FREE_MODELS, OPENROUTER_KEYS_URL, saveUserKeys, useUserKeys, type AiProvider, type SttProvider, type UserKeys,
 } from "@/lib/byok";
-import { useOnDevice } from "@/lib/ai/onDevice";
+import { onDeviceScope, useOnDevice } from "@/lib/ai/onDevice";
 import OnDeviceRow from "./OnDeviceRow";
 import SecretInput from "./SecretInput";
 import { SettingsBlock, SettingsGroup, SettingsRow, Switch } from "./SettingsSection";
@@ -144,7 +144,9 @@ export default function ApiKeysSection() {
   };
 
   const using =
-    savedActive === "anthropic"
+    onDevice.forced && onDevice.inUse
+      ? { label: "On this device", detail: `Chrome's built-in model, picked in the model menu. ${onDeviceScope(onDevice)}`, tone: "var(--success)" }
+      : savedActive === "anthropic"
       ? { label: "Your Claude key", detail: `${maskKey(keys.anthropicKey)}, ${keys.anthropicModel ?? server?.model ?? "default model"}`, tone: "var(--success)" }
       : savedActive === "opencode"
         ? { label: "Your OpenCode Go key", detail: `${maskKey(keys.opencodeKey)}, ${opencodeLabel(keys.opencodeGoModel)}`, tone: "var(--success)" }
@@ -157,7 +159,7 @@ export default function ApiKeysSection() {
             : server?.openrouter
               ? { label: "Shared free key", detail: `${modelLabel(server.openrouterModel)}, limited each day`, tone: "var(--accent)" }
               : onDevice.inUse
-                ? { label: "On this device", detail: "Chrome's built-in model, no photo reading", tone: "var(--success)" }
+                ? { label: "On this device", detail: `Chrome's built-in model${onDevice.sees ? "" : ", no photo reading"}`, tone: "var(--success)" }
                 : { label: "Demo mode", detail: "Rule-based replies, no photo reading", tone: "var(--warning)" };
 
   const keyInput = (value: string | undefined, onChange: (v: string) => void, placeholder: string, label: string) => (

@@ -491,6 +491,14 @@ kbd {
 .fn-burger[data-open="true"] line:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
 /* A dot on a tab that just received something from the assistant. */
+/* The phone tab bar floats over the page: frosted, so what scrolls beneath shows faintly through. */
+.tabbar { background: color-mix(in oklab, var(--surface) 78%, transparent); -webkit-backdrop-filter: blur(18px) saturate(1.4); backdrop-filter: blur(18px) saturate(1.4); }
+@supports not (backdrop-filter: blur(1px)) { .tabbar { background: var(--surface); } }
+
+/* An indeterminate progress bar: a stripe sliding across while there's no number to show. */
+@keyframes fn-indeterminate { from { left: -33%; } to { left: 100%; } }
+.fn-indeterminate { animation: fn-indeterminate 1.4s ease-in-out infinite; }
+
 @keyframes fn-ping {
   0% { transform: scale(1); opacity: 0.9; }
   80%, 100% { transform: scale(2.4); opacity: 0; }
@@ -622,7 +630,7 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fn-rise, .fn-pop, .fn-toast, .fn-flash, .fn-dot, .fn-nudge, .fn-ping::after, .recording,
+  .fn-rise, .fn-pop, .fn-toast, .fn-flash, .fn-dot, .fn-nudge, .fn-ping::after, .recording, .fn-indeterminate,
   .fn-sway, .fn-breathe, .fn-shimmer, .fn-corner, .fn-step, .fn-arrive,
   .fn-backdrop, .fn-sheet, .fn-dialog, .fn-drawer,
   .note-card, .fn-list-back, .fn-aside, .fn-note-in {

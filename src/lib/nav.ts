@@ -7,7 +7,7 @@ import type { ChangeLink } from "./store";
 import type { Tab } from "./types";
 
 /** "person": a people page in Notes; its id is the person's key (see lib/people.ts). */
-export type FocusKind = "note" | "todo" | "transaction" | "budget" | "sticky" | "person";
+export type FocusKind = "note" | "todo" | "transaction" | "budget" | "sticky" | "person" | "talk";
 export type Focus = { kind: FocusKind; id: string };
 
 const EVT = "four-notes:open";

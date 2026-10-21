@@ -17,7 +17,9 @@ export function useAiRoute() {
   useEffect(() => { serverStatus().then(setServer); }, []);
   const onDevice = useOnDevice();
   const own = activeProvider(keys);
-  if (onDevice.inUse) return { label: "On this device", canSearchWeb: false };
+  // Web search runs on Claude whatever answers the chat, so it's offered by the cloud key alone.
+  const searchable = own === "anthropic" || (!own && Boolean(server?.anthropic));
+  if (onDevice.inUse) return { label: "On this device", canSearchWeb: searchable };
   if (own === "anthropic") return { label: "Your Anthropic key", canSearchWeb: true };
   if (own === "opencode") return { label: "Your OpenCode Go key", canSearchWeb: false };
   if (own === "openrouter") return { label: "Your OpenRouter key", canSearchWeb: false };

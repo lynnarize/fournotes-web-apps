@@ -39,6 +39,8 @@ This guide has three parts:
 | People pages | `lib/people.ts`, `components/notes/People.tsx` |
 | Interview mode (Ask AI → Interview me) | `components/notes/NoteEditor.tsx` |
 | The app's own AI jobs, one shape for every provider | `lib/ai/agent.ts`, `app/api/ai/agent` |
+| Transcribe: recording talks and calls, speakers, write-up | `lib/talks/*`, `components/TranscribeView.tsx`, `components/talks/TalkPage.tsx` |
+| Transcription engines (speech-to-text key, OpenRouter audio) | `lib/ai/transcribe.ts`, `app/api/transcribe` |
 
 Still open: location reminders and widgets (both native-only), tax/annual export, voice assistant mode, and smart reminder timing.
 

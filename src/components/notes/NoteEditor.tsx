@@ -1179,7 +1179,7 @@ export default function NoteEditor({ note, onBack, listHidden, onToggleList, foc
       </div>
 
       {/* Footer: length and age on the left; the assistant's corner pill keeps the right edge clear. */}
-      <div className={`flex min-h-[52px] shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] pl-4 pr-[172px] text-xs text-[var(--text-muted)] sm:pr-[196px] md:pl-6 ${focusMode ? "pb-[env(safe-area-inset-bottom)]" : ""}`}>
+      <div className={`flex min-h-[52px] shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] pl-4 pr-[172px] text-xs text-[var(--text-muted)] sm:pr-[196px] md:pl-6 ${focusMode ? "pb-[env(safe-area-inset-bottom)]" : "max-md:mb-[var(--tabbar-space)]"}`}>
         <span className="fn-num whitespace-nowrap">{words} word{words === 1 ? "" : "s"}</span>
         <span aria-hidden className="max-sm:hidden">·</span>
         <span className="truncate max-sm:hidden">Edited {ago(note.updatedAt, now)}</span>

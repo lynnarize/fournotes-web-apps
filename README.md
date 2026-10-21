@@ -12,6 +12,13 @@ Built with Next.js, React and Tailwind v4. It runs with no API keys at all, and 
 - **Voice → note** — record a meeting and get a summary, key points and action items, with the action items turned into to-dos.
 - **Quick-add everywhere** — `⌘K` / `Ctrl+K` to search or add, `/` commands inside notes, and a PWA share target so you can share a photo straight into the app.
 
+**Transcribe**
+- **Record a conversation** in person, or a call: Google Meet, Teams or Zoom in a tab, or an app like WhatsApp by sharing the screen with its sound. Your microphone and the call are recorded apart, so the transcript knows what you said from what they said.
+- **Who said what**, with names you can change (giving two speakers the same name merges them), and a short profile of each person in the talk.
+- **A write-up**: title, summary, key points and action items, one tap from To-Do, and **Save to Notes** for the whole thing.
+- **Ask about it**: the assistant searches your talks too ("what budget did Dimas mention?"), and the recording plays from any line.
+- Transcribed by a speech-to-text key (OpenAI or Groq), an OpenRouter model that listens (needs $0.50 of credit), or, with neither, the browser's own live captions. Talks and their audio stay in this browser.
+
 **Agents that work across notes and tasks**
 - **On-device AI** — with no key, Chrome's built-in model answers on your computer: free, private, and it works offline.
 - **Chat screenshots** — scan a WhatsApp group chat and the plans become a note and dated tasks, with what *you* said you'd do.
