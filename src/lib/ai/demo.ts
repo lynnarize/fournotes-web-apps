@@ -158,6 +158,10 @@ export class DemoProvider implements LLMProvider {
     return localBrief(input) + DEMO;
   }
 
+  async agent(): Promise<unknown> {
+    throw new ProviderError("This needs AI. Add a free OpenRouter key in Settings → AI & API keys, or use Chrome's on-device model.", 501);
+  }
+
   async write(): Promise<string> {
     throw new ProviderError("Writing help needs AI. Add a free OpenRouter key in Settings → AI & API keys.", 501);
   }

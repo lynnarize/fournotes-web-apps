@@ -1,6 +1,6 @@
-import "server-only";
 // Validate model output before it reaches the client store: amounts are numbers,
 // dates parse, enums are known. Invalid actions are dropped, not guessed at.
+// Shared: the server checks every provider's output, the browser the on-device model's.
 import { z } from "zod";
 import type { AIAction } from "../types";
 
@@ -22,6 +22,7 @@ const Action = z.discriminatedUnion("type", [
     status: z.enum(["todo", "doing"]).optional().catch(undefined),
     bill: z.object({ amount, currency: z.string().length(3).optional(), category }).nullish().catch(null),
     noteRef: z.string().optional(),
+    rotation: z.array(z.string().trim().min(1).max(40)).max(10).optional().catch(undefined),
   }),
   z.object({
     type: z.literal("add_transaction"), merchant: z.string().min(1).max(120), amount,

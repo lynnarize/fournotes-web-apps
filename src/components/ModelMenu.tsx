@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { ANTHROPIC_USER_MODELS, OPENCODE_GO_MODELS, OPENROUTER_FREE_MODELS } from "@/lib/ai/models";
 import { serverStatus, type ServerStatus } from "@/lib/aiRoute";
 import { activeProvider, saveUserKeys, useUserKeys, type AiProvider, type UserKeys } from "@/lib/byok";
+import { ON_DEVICE_MODEL, onDeviceInUse, useOnDevice } from "@/lib/ai/onDevice";
 import { openSettings } from "@/lib/nav";
 import { Dropdown, MenuItem, MenuLabel, MenuSep } from "./notes/Dropdown";
 import { Icon } from "./ui";
@@ -64,6 +65,7 @@ export function pickedModel(keys: UserKeys, server: ServerStatus | null): ModelC
   if (!server) return null;
   if (server.anthropic) return claude(server.model);
   if (server.openrouter) return { name: freeName(keys.sharedModel ?? server.openrouterModel), tier: "Free" };
+  if (onDeviceInUse()) return { name: "On this device", tier: "" };
   return { name: "Demo mode", tier: "" };
 }
 
@@ -72,6 +74,7 @@ export const choiceName = (c: ModelChoice | null) => (!c ? "" : c.name === "Clau
 
 /** The name for a model id a reply came back with (OpenRouter may have answered with a fallback). */
 export function modelDisplayName(id: string) {
+  if (id === ON_DEVICE_MODEL) return "On this device";
   if (ANTHROPIC_USER_MODELS.some((m) => m.id === id)) return claudeName(id);
   if (/^claude/i.test(id)) return "Claude";
   const free = OPENROUTER_FREE_MODELS.find((m) => m.id === id);
@@ -86,6 +89,7 @@ export function useModelChoice() {
   const { keys } = useUserKeys();
   const [server, setServer] = useState<ServerStatus | null>(null);
   useEffect(() => { serverStatus().then(setServer); }, []);
+  useOnDevice(); // re-picks once the on-device check is done
   return pickedModel(keys, server);
 }
 
@@ -105,6 +109,7 @@ export default function ModelMenu() {
   const { keys, persist } = useUserKeys();
   const [server, setServer] = useState<ServerStatus | null>(null);
   useEffect(() => { serverStatus().then(setServer); }, []);
+  const onDevice = useOnDevice();
   const own = activeProvider(keys);
   const save = (patch: Partial<UserKeys>) => saveUserKeys({ ...keys, ...patch }, persist);
   const pick = (provider: AiProvider, patch: Partial<UserKeys>) => save({ ...patch, aiProvider: provider });
@@ -183,7 +188,11 @@ export default function ModelMenu() {
             </>
           )}
           {!hasOwn && !server?.anthropic && !server?.openrouter && (
-            <p className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">No AI key yet: replies are simple and rule-based. Add a free key for the full assistant.</p>
+            <p className="px-2.5 py-2 text-xs text-[var(--text-secondary)]">
+              {onDevice.inUse
+                ? "No AI key yet: Chrome's built-in model answers, on this device. Add a free key for a stronger model and photo reading."
+                : "No AI key yet: replies are simple and rule-based. Add a free key for the full assistant."}
+            </p>
           )}
           <MenuSep />
           <button

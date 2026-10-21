@@ -10,6 +10,8 @@ import {
   activeProvider, clearUserKeys, isValidKey, keyHeaders, maskKey, MODEL_OPTIONS, OPENCODE_GO_MODELS, OPENCODE_GO_URL, opencodeLabel, OPENROUTER_CREDITS_URL,
   OPENROUTER_FREE_MODELS, OPENROUTER_KEYS_URL, saveUserKeys, useUserKeys, type AiProvider, type SttProvider, type UserKeys,
 } from "@/lib/byok";
+import { useOnDevice } from "@/lib/ai/onDevice";
+import OnDeviceRow from "./OnDeviceRow";
 import SecretInput from "./SecretInput";
 import { SettingsBlock, SettingsGroup, SettingsRow, Switch } from "./SettingsSection";
 import { Icon, useToast } from "./ui";
@@ -51,6 +53,7 @@ export default function ApiKeysSection() {
   const [results, setResults] = useState<Partial<Record<Service, { ok: boolean; message: string }>>>({});
   const [paidModels, setPaidModels] = useState<PaidModel[] | null>(null);
   const [paidError, setPaidError] = useState(false);
+  const onDevice = useOnDevice();
 
   useEffect(() => {
     setDraft(keys);
@@ -153,7 +156,9 @@ export default function ApiKeysSection() {
             ? { label: "Shared key (Claude)", detail: server.model, tone: "var(--accent)" }
             : server?.openrouter
               ? { label: "Shared free key", detail: `${modelLabel(server.openrouterModel)}, limited each day`, tone: "var(--accent)" }
-              : { label: "Demo mode", detail: "Rule-based replies, no photo reading", tone: "var(--warning)" };
+              : onDevice.inUse
+                ? { label: "On this device", detail: "Chrome's built-in model, no photo reading", tone: "var(--success)" }
+                : { label: "Demo mode", detail: "Rule-based replies, no photo reading", tone: "var(--warning)" };
 
   const keyInput = (value: string | undefined, onChange: (v: string) => void, placeholder: string, label: string) => (
     <SecretInput
@@ -405,6 +410,7 @@ export default function ApiKeysSection() {
           label={<><span className="sr-only">AI is using: </span>{using.label}</>}
           description={using.detail}
         />
+        <OnDeviceRow />
         {server?.shared && !savedActive && (
           <SettingsBlock>
             <p className={hint}>

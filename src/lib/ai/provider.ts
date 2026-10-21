@@ -9,6 +9,8 @@ import { validateActions } from "./validate";
 // Every LLM vendor is hidden behind this interface. Add openai.ts / gemini.ts
 // implementing the same methods and pick one in getProvider().
 export type WebAnswer = { text: string; sources: { title: string; url: string }[] };
+/** A note kept current: what the web says has changed since it was written. */
+export type Recheck = { changed: boolean; summary: string; changes: string[]; sources: { title: string; url: string }[] };
 
 export interface LLMProvider {
   /**
@@ -24,6 +26,10 @@ export interface LLMProvider {
   write(task: WritingTask, text: string, title: string): Promise<string>;
   /** Recommendations for what a note is about, found on the web. Only Claude has web search. */
   webIdeas?(title: string, content: string, question: string): Promise<WebAnswer>;
+  /** Checks a note against the web for what has changed since `since`. Claude only, like webIdeas. */
+  recheck?(title: string, content: string, since: string): Promise<Recheck>;
+  /** One of the app's own jobs (see agent.ts): the answer in the shape of `schema`, unchecked. */
+  agent(system: string, prompt: string, schema: Record<string, unknown>, fast: boolean): Promise<unknown>;
 }
 
 /**
@@ -120,10 +126,13 @@ export function captureToActions(input: Record<string, unknown>, ctx: ClientCont
     return { kind, reply, actions: validateActions(actions) as AIAction[] };
   }
 
-  if (note) actions.push({ type: "create_note", title: note.title, content: note.content, tags: note.tags, ref: "capture" });
+  if (note) {
+    const tags = kind === "chat" ? [...new Set([...(note.tags ?? []), "chat"])] : note.tags;
+    actions.push({ type: "create_note", title: note.title, content: note.content, tags, ref: "capture" });
+  }
   for (const t of dedupeTodos(todos)) {
-    // Tickets: remind a couple of hours before departure, not at departure.
-    const remindAt = kind === "ticket" ? hoursBefore(t.dueAt, 2) : t.dueAt ?? null;
+    // Tickets: remind a couple of hours before departure, not at departure. Plans from a chat: an hour before.
+    const remindAt = kind === "ticket" ? hoursBefore(t.dueAt, 2) : kind === "chat" ? hoursBefore(t.dueAt, 1) : t.dueAt ?? null;
     actions.push({
       type: "create_todo", title: t.title, dueAt: t.dueAt ?? null, remindAt, priority: kind === "ticket" ? "high" : t.priority,
       rrule: t.rrule ?? null, noteRef: note ? "capture" : undefined,
@@ -142,6 +151,7 @@ When the user wants something saved, call the matching tool instead of only desc
 - travel or appointment bookings (train, bus, flight, hotel, doctor) -> create_todo with dueAt = departure/start time and remindAt about 2 hours earlier, plus create_note with the booking details
 - what the user is doing right now ("I'm doing chores", "working on the report now", "lagi nyuci") -> start_todo when it matches an open task in <user_data> todos, otherwise create_todo with status "doing". Finished something -> complete_todo.
 - repeating tasks and bills ("pay rent on the 5th of every month", "Netflix every month") -> create_todo with rrule, plus bill {amount, category} when it costs money
+- chores people take turns at ("take out the trash every Monday, taking turns with Andi and Budi", "gantian", "bergiliran") -> create_todo with rrule and rotation
 - spending or income ("coffee 25k", "paid 150k for gas") -> add_transaction
 - pasted e-wallet / bank notifications (GoPay, OVO, DANA, ShopeePay, LinkAja, QRIS, BCA, Mandiri, BRI, BNI, Jago): extract merchant, amount and date -> add_transaction. "Rp 25.000" means 25000. Money received is a negative amount with category Income.
 - "split with Andi and Budi" -> splitWith on add_transaction for a new expense, or split_transaction for an existing one

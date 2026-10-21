@@ -30,6 +30,15 @@ This guide has three parts:
 | Dark / light / system theme | `lib/theme.ts`, `components/AppearanceSection.tsx` |
 | First-run setup wizard | `components/Onboarding.tsx` |
 | Export / print report | `components/ReportModal.tsx` |
+| On-device AI (Chrome's built-in model, no key, works offline) | `lib/ai/onDevice.ts`, `components/OnDeviceRow.tsx` |
+| Chat screenshots → plans and tasks | `kind: "chat"` in `lib/ai/tools.ts`, `captureToActions` in `lib/ai/provider.ts` |
+| Stuck tasks (pushed back 3 times or a week overdue) | `lib/tasks.ts`, `components/StuckTasks.tsx` |
+| Chores that take turns, fairly | `lib/tasks.ts` (`nextInRotation`), task panel → Turns |
+| Notes kept current (re-checked on the web, Claude only) | `lib/keepCurrent.ts`, `app/api/ai/recheck` |
+| Notes that disagree | `lib/conflicts.ts`, `components/notes/Conflicts.tsx` |
+| People pages | `lib/people.ts`, `components/notes/People.tsx` |
+| Interview mode (Ask AI → Interview me) | `components/notes/NoteEditor.tsx` |
+| The app's own AI jobs, one shape for every provider | `lib/ai/agent.ts`, `app/api/ai/agent` |
 
 Still open: location reminders and widgets (both native-only), tax/annual export, voice assistant mode, and smart reminder timing.
 

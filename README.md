@@ -12,6 +12,16 @@ Built with Next.js, React and Tailwind v4. It runs with no API keys at all, and 
 - **Voice → note** — record a meeting and get a summary, key points and action items, with the action items turned into to-dos.
 - **Quick-add everywhere** — `⌘K` / `Ctrl+K` to search or add, `/` commands inside notes, and a PWA share target so you can share a photo straight into the app.
 
+**Agents that work across notes and tasks**
+- **On-device AI** — with no key, Chrome's built-in model answers on your computer: free, private, and it works offline.
+- **Chat screenshots** — scan a WhatsApp group chat and the plans become a note and dated tasks, with what *you* said you'd do.
+- **Stuck tasks** — a task pushed back three times gets a first step small enough to start now, a split into smaller tasks, or a clean drop.
+- **Chores in turns** — "take out the trash every Monday, taking turns with Andi and Budi": finishing it passes it on fairly, and a WhatsApp nudge is drafted for you to send.
+- **Notes kept current** — mark a note and it's re-checked on the web now and then; what changed waits on the note (needs Claude).
+- **Notes that disagree** — finds two notes stating the same fact differently, like two Wi-Fi passwords.
+- **People pages** — everyone your notes mention, with what you know, tasks that name them, shared chores and what they owe.
+- **Interview mode** — the assistant asks a few questions and writes the note from your own answers.
+
 **Organise**
 - Four tabs: **Today** (daily brief, due tasks, yesterday's spending), **Notes**, **To-Do** and **Finance**.
 - Sticky notes pinned along the top.

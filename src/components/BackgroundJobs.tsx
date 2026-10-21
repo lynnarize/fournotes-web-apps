@@ -6,6 +6,8 @@ import { useEffect, useRef } from "react";
 import { looksLikeThinking } from "@/lib/ai/text";
 import { api } from "@/lib/client";
 import { baseAmount } from "@/lib/insights";
+import { canSearchWeb, isDue, recheckNote } from "@/lib/keepCurrent";
+import { openItem } from "@/lib/nav";
 import { alive, useStore } from "@/lib/store";
 import { useToast } from "./ui";
 
@@ -96,6 +98,31 @@ export default function BackgroundJobs() {
         .catch(() => triedFx.current.delete(key));
     }
   }, [store.ready, store.all.transactions, base]);
+
+  // 5) Notes kept current: check the most overdue one every half hour, one at a time.
+  useEffect(() => {
+    if (!store.ready) return;
+    let running = false;
+    const tick = async () => {
+      if (running || !navigator.onLine) return;
+      const { all, updateNote } = storeRef.current;
+      const due = alive(all.notes).filter((n) => isDue(n)).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))[0];
+      if (!due || !(await canSearchWeb())) return;
+      running = true;
+      try {
+        if (await recheckNote(due, updateNote)) {
+          const title = due.title || "A note";
+          toast(`“${title}” may be out of date. See what changed.`, "ok", { label: "Open", run: () => openItem("note", due.id) });
+          notify("Four Notes", `“${title}” may be out of date`, `recheck-${due.id}`);
+        }
+      } catch { /* tried again next time */ } finally {
+        running = false;
+      }
+    };
+    const first = setTimeout(tick, 15_000);
+    const id = setInterval(tick, 30 * 60_000);
+    return () => { clearTimeout(first); clearInterval(id); };
+  }, [store.ready, toast]);
 
   return null;
 }

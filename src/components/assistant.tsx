@@ -258,7 +258,8 @@ export function AssistantProvider({ children, onFiled }: { children: ReactNode; 
   useEffect(() => { serverHasStt(); }, []);
 
   const send = useCallback(async (text: string): Promise<string | null> => {
-    if (!navigator.onLine) {
+    // Offline, Chrome's built-in model can still answer; otherwise the message waits.
+    if (!navigator.onLine && !(await import("@/lib/ai/onDevice").then((m) => m.shouldUseOnDevice()))) {
       push({ role: "user", content: text, queued: true });
       const box = [...readOutbox(), text];
       writeOutbox(box);

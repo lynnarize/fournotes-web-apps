@@ -14,6 +14,23 @@ export interface BaseItem {
 
 export type NoteSource = "manual" | "chat" | "ocr" | "recording" | "share";
 
+/** What a "keep current" check found has changed since the note was written. */
+export interface NoteUpdate {
+  at: string; // ISO, when it was checked
+  changed: boolean;
+  summary: string;
+  changes: string[];
+  sources: { title: string; url: string }[];
+}
+
+/** A note the assistant re-checks against the web now and then (Claude only: it needs web search). */
+export interface KeepCurrent {
+  every: "week" | "month";
+  checkedAt?: string | null; // ISO, the last check (or when it was turned on)
+  /** The last check's changes, until they're added to the note or dismissed. */
+  update?: NoteUpdate | null;
+}
+
 export interface Note extends BaseItem {
   title: string;
   content: string; // plain text / light markdown: what search, the AI and the brief read
@@ -22,6 +39,7 @@ export interface Note extends BaseItem {
   source: NoteSource;
   tags: string[];
   imageDataUrl?: string; // thumbnail of the scanned page (local only for now)
+  keepCurrent?: KeepCurrent | null;
 }
 
 export type Priority = "low" | "medium" | "high";
@@ -48,6 +66,13 @@ export interface Todo extends BaseItem {
   rrule?: string | null; // subset of RFC 5545, e.g. "FREQ=MONTHLY;INTERVAL=1"
   bill?: Bill | null;
   noteId?: string | null; // link back to the note it came from
+  /** How often the due date was pushed later, and when last: a task that keeps slipping is "stuck". */
+  postponed?: { count: number; at: string } | null;
+  /** Not flagged as stuck again before this (ISO): "not now". */
+  stuckUntil?: string | null;
+  /** Chores: the people taking turns, in order, and whose turn this one is. */
+  rotation?: string[] | null;
+  assignee?: string | null;
 }
 
 /** Built-in categories. Users can add their own (Finance → settings → Categories). */
@@ -156,6 +181,8 @@ export type AIAction =
       rrule?: string | null;
       bill?: Bill | null;
       noteRef?: string; // `ref` of a create_note in the same batch
+      /** A chore people take turns at; the first name goes first. */
+      rotation?: string[];
     }
   | {
       type: "add_transaction";
@@ -203,7 +230,7 @@ export interface AnswerSource {
 }
 
 export interface CaptureResult {
-  kind: "receipt" | "ticket" | "handwritten_note" | "todo_list" | "other";
+  kind: "receipt" | "ticket" | "chat" | "handwritten_note" | "todo_list" | "other";
   reply: string;
   actions: AIAction[];
   demo?: boolean;
@@ -217,7 +244,7 @@ export interface ClientContext {
   notes: { title: string; snippet: string }[];
   /** Full text of the notes most relevant to the question (retrieval / RAG). */
   relevantNotes?: { title: string; content: string; updatedAt: string }[];
-  todos: { title: string; done: boolean; doing?: boolean; dueAt?: string | null; rrule?: string | null }[];
+  todos: { title: string; done: boolean; doing?: boolean; dueAt?: string | null; rrule?: string | null; assignee?: string }[];
   transactions: { merchant: string; amount: number; category: string; date: string }[];
   budgets?: Partial<Record<ExpenseCategory, number>>;
   categories?: string[];

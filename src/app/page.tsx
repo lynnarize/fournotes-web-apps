@@ -71,7 +71,7 @@ function Shell() {
 
   // Stickies only show on Today.
   useOpenItem("any", (f) => {
-    setTab(f.kind === "sticky" ? "today" : f.kind === "note" ? "notes" : f.kind === "todo" ? "todo" : "finance");
+    setTab(f.kind === "sticky" ? "today" : f.kind === "note" || f.kind === "person" ? "notes" : f.kind === "todo" ? "todo" : "finance");
   });
 
   // ⌘K / Ctrl+K: search and quick add. ⌘, / Ctrl+,: Settings.

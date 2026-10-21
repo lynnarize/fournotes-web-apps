@@ -1,7 +1,8 @@
 "use client";
 // Browser-side helpers: API calls, image resizing, calendar links, file export.
+import type { AgentInput, AgentJob, AgentOutput } from "./ai/agent";
 import { authHeaders } from "./byok";
-import type { BriefInput, CaptureResult, ChatMessage, ChatResponse, ClientContext, Todo } from "./types";
+import type { BriefInput, CaptureResult, ChatMessage, ChatResponse, ClientContext, NoteUpdate, Todo } from "./types";
 
 async function asJson<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
@@ -13,12 +14,30 @@ const offlineGuard = () => {
   if (typeof navigator !== "undefined" && !navigator.onLine) throw new Error("You're offline. This needs internet; it will work again once you reconnect.");
 };
 
+/**
+ * Chrome's built-in model, when it should answer instead of the server (no key anywhere,
+ * or offline). If it fails, the request goes to the server as usual.
+ */
+export async function onDevice<T>(run: (m: typeof import("./ai/onDevice")) => Promise<T>, signal?: AbortSignal): Promise<T | undefined> {
+  const m = await import("./ai/onDevice");
+  if (!(await m.shouldUseOnDevice())) return undefined;
+  try {
+    return await run(m);
+  } catch (e) {
+    if (signal?.aborted) throw e;
+    console.warn("[ai:on-device] falling back to the server:", e instanceof Error ? e.message : e);
+    return undefined;
+  }
+}
+
 export const api = {
   /**
    * `tools: false` asks for an answer only: nothing can be filed.
    * `signal` stops waiting for the reply (the Stop button); the request then rejects with an AbortError.
    */
   chat: async (messages: ChatMessage[], context: ClientContext, opts?: { tools?: boolean; signal?: AbortSignal }) => {
+    const local = await onDevice((m) => m.onDeviceChat(messages, context, opts?.tools !== false, opts?.signal), opts?.signal);
+    if (local) return local;
     offlineGuard();
     return fetch("/api/chat", {
       method: "POST",
@@ -59,12 +78,43 @@ export const api = {
 
   /** Notes editor AI menu: summarize / improve / fix / shorter / continue. */
   write: async (task: "summarize" | "improve" | "fix" | "shorter" | "continue", text: string, title: string) => {
+    const local = await onDevice((m) => m.onDeviceWrite(task, text, title));
+    if (local) return { text: local };
     offlineGuard();
     return fetch("/api/ai/write", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(await authHeaders()) },
       body: JSON.stringify({ task, text, title }),
     }).then((r) => asJson<{ text: string }>(r));
+  },
+
+  /** One of the app's own AI jobs (lib/ai/agent.ts): on this device when it should, else on the server. */
+  agent: async <J extends AgentJob>(job: J, input: AgentInput<J>): Promise<AgentOutput<J>> => {
+    const local = await onDevice(async (m) => {
+      // Loaded here, not up front: it brings zod, which most pages never need.
+      const { agentPrompt, agentResult, agentSchema } = await import("./ai/agent");
+      const ask = agentPrompt(job, input);
+      const out = agentResult(job, await m.onDeviceStructured(ask.system, ask.prompt, agentSchema(job)));
+      if (!out) throw new Error("answer not in shape");
+      return out;
+    });
+    if (local) return local;
+    offlineGuard();
+    return fetch("/api/ai/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ job, input }),
+    }).then((r) => asJson<AgentOutput<J>>(r));
+  },
+
+  /** A "keep current" note against the web (Claude only, like webIdeas). */
+  recheck: async (title: string, content: string, since: string) => {
+    offlineGuard();
+    return fetch("/api/ai/recheck", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authHeaders()) },
+      body: JSON.stringify({ title, content, since }),
+    }).then((r) => asJson<Omit<NoteUpdate, "at">>(r));
   },
 
   monthlySummary: async (month: string, currency: string, transactions: unknown[]) => {
@@ -77,6 +127,8 @@ export const api = {
   },
 
   brief: async (input: BriefInput) => {
+    const local = await onDevice((m) => m.onDeviceBrief(input));
+    if (local) return { text: local };
     offlineGuard();
     return fetch("/api/brief", {
       method: "POST",

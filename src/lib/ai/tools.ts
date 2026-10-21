@@ -60,6 +60,11 @@ export const ACTION_TOOLS = [
           required: ["amount", "category"],
         },
         noteRef: { type: "string", description: "ref of a note created in this same reply, to link the task to it" },
+        rotation: {
+          type: "array",
+          items: { type: "string" },
+          description: "For a chore people take turns at: their names in order, the first goes first. Use 'Me' for the user. e.g. ['Me', 'Andi', 'Budi'].",
+        },
       },
       required: ["title"],
     },
@@ -151,16 +156,19 @@ export const FILE_CAPTURE_TOOL = {
     properties: {
       kind: {
         type: "string",
-        enum: ["receipt", "ticket", "handwritten_note", "todo_list", "other"],
+        enum: ["receipt", "ticket", "chat", "handwritten_note", "todo_list", "other"],
         description:
           "receipt = store receipt / invoice / payment proof / e-wallet or bank app screenshot (GoPay, OVO, DANA, QRIS, m-banking). " +
           "ticket = a booking or reservation with a date and time: train, bus, flight or ferry ticket, boarding pass, event ticket, hotel or appointment confirmation. " +
+          "chat = a screenshot of a messaging conversation (WhatsApp, Telegram, LINE, Instagram, iMessage), usually a group making plans. " +
           "handwritten_note = handwriting or typed notes. todo_list = a checklist of tasks. other = anything else.",
       },
       reply: { type: "string", description: "One friendly sentence telling the user where it was filed." },
       note: {
         type: "object",
-        description: "For handwritten_note, ticket, other, or recordings: transcribed/summarized note. For a ticket, put the booking details here (route, seat, class, times, booking code).",
+        description:
+          "For handwritten_note, ticket, chat, other, or recordings: transcribed/summarized note. For a ticket, put the booking details here (route, seat, class, times, booking code). " +
+          "For a chat: title = the plan (e.g. 'Dinner at Bakmi GM, Sat 7pm'); content = what was agreed (when, where, who's coming, who brings or pays what) as short bullets, then any open questions. Don't copy the whole chat.",
         properties: {
           title: { type: "string" },
           content: { type: "string" },
@@ -186,7 +194,9 @@ export const FILE_CAPTURE_TOOL = {
         description:
           "Tasks / action items found (checklists, or action items in a recording). " +
           "ALWAYS add one for a ticket, with dueAt filled in: title like 'Take the 20:15 train to Jakarta', dueAt = departure/start date and time. " +
-          "Also add one for anything else with a deadline in the image (appointment, bill due date). Never put receipt line items here; they go in receipt.items.",
+          "Also add one for anything else with a deadline in the image (appointment, bill due date). Never put receipt line items here; they go in receipt.items. " +
+          "For a chat: one todo for each plan or meetup (dueAt = when it happens), plus one for each thing the USER agreed to do or bring. " +
+          "The user's own messages are the ones on the right (usually green or blue bubbles); don't add tasks for what other people promised.",
         items: {
           type: "object",
           properties: {

@@ -264,7 +264,7 @@ export default function Sidebar({ tab, setTab, onClose, onSearch, onSettings }: 
       <div className="flex gap-2">
         <ScanPicker onFile={(f) => { onClose?.(); scan(f); }}>
           {(pick) => (
-            <button type="button" className="btn btn-secondary flex-1 font-normal max-md:h-11" onClick={pick} disabled={!!busy} title="Scan a receipt, note or e-wallet screenshot">
+            <button type="button" className="btn btn-secondary flex-1 font-normal max-md:h-11" onClick={pick} disabled={!!busy} title="Scan a receipt, note, e-wallet screenshot or chat">
               <Icon name="scan" size={16} /> Scan
             </button>
           )}

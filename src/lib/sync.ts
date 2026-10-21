@@ -29,8 +29,11 @@ type Row = Note | Todo | Transaction | Sticky;
 // Image thumbnails stay local; upload them to Storage when you need them on other devices.
 const COMMON = ["id", "spaceId", "createdAt", "updatedAt", "deletedAt"];
 const FIELDS: Record<ListKind, string[]> = {
-  notes: [...COMMON, "title", "content", "html", "source", "tags"],
-  todos: [...COMMON, "title", "notes", "done", "doing", "completedAt", "dueAt", "remindAt", "reminded", "priority", "source", "rrule", "bill", "noteId"],
+  notes: [...COMMON, "title", "content", "html", "source", "tags", "keepCurrent"],
+  todos: [
+    ...COMMON, "title", "notes", "done", "doing", "completedAt", "dueAt", "remindAt", "reminded", "priority", "source", "rrule", "bill", "noteId",
+    "postponed", "stuckUntil", "rotation", "assignee",
+  ],
   transactions: [...COMMON, "merchant", "amount", "currency", "fxRate", "category", "date", "items", "source", "splits", "noteId"],
   stickies: [...COMMON, "text", "color", "pinned"],
 };
