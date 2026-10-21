@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useBackDismiss } from "@/lib/backstack";
 import { downloadFile } from "@/lib/client";
-import { useInstallPrompt, usePresence } from "@/lib/hooks";
+import { useInstallPrompt, useMedia, usePresence } from "@/lib/hooks";
 import { alive, useStore, type ListKind } from "@/lib/store";
 import { CURRENCIES } from "@/lib/types";
 import { wipeThisDevice } from "@/lib/wipe";
@@ -62,18 +62,6 @@ const matches = (s: (typeof SECTIONS)[number], q: string) => {
 const FIELD = "field max-md:h-11";
 const SMALL = "btn btn-sm max-md:h-11";
 const linkClass = "text-[var(--foreground)] underline decoration-[var(--border-strong)] underline-offset-4 hover:decoration-[var(--foreground)]";
-
-function useMedia(query: string) {
-  const [match, setMatch] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const update = () => setMatch(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, [query]);
-  return match;
-}
 
 /** A square tile before a row's label. */
 const Tile = ({ icon }: { icon: string }) => (

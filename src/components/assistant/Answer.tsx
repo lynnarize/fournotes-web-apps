@@ -84,11 +84,13 @@ function SourceCard({ s, id, lit, setActive, onOpen }: { s: Cited; id: string; l
  * The reply's text with its citations. `compact` (the panel): text first, sources folded
  * under it. `full` (the full page): sources first and open, then the text, a little roomier.
  */
-export default function Answer({ text, sources, variant, onOpenSource }: {
+export default function Answer({ text, sources, variant, onOpenSource, revealing = false }: {
   text: string;
   sources?: AnswerSource[];
   variant: "compact" | "full";
   onOpenSource: (s: AnswerSource) => void;
+  /** Still arriving: the newest line fades in, and the sources wait until the text is all there. */
+  revealing?: boolean;
 }) {
   const c = useMemo(() => citations(text, sources), [text, sources]);
   const uid = useId();
@@ -120,10 +122,10 @@ export default function Answer({ text, sources, variant, onOpenSource }: {
     <Markdown
       text={text}
       cite={cite}
-      className={full ? "space-y-4 text-[16px] leading-[25.6px]" : "space-y-2 text-[16px] leading-6"}
+      className={`${full ? "space-y-4 text-[16px] leading-[25.6px]" : "space-y-2 text-[16px] leading-6"} ${revealing ? "fn-streaming" : ""}`}
     />
   );
-  if (!c.list.length) return body;
+  if (!c.list.length || revealing) return body;
 
   const sourcesBlock = (
     <div className="flex flex-col gap-1">

@@ -603,6 +603,24 @@ kbd {
 /* Opening another note: its text fades in rather than snapping. */
 .fn-note-in { animation: fn-fade-in 0.22s ease-out backwards; }
 
+/* ---- The assistant's conversation (after Arc's AI composer and AI chat) ---------------
+   Your message lifts into its bubble; a reply that just landed is revealed a few words at a
+   time with its newest line fading in; the composer glides from the middle of the card to
+   its foot (a view transition named fn-composer). */
+@keyframes fn-lift { from { opacity: 0; transform: translateY(12px) scale(0.98); } }
+.fn-lift { animation: fn-lift 0.36s cubic-bezier(0.22, 1, 0.36, 1) backwards; transform-origin: bottom right; }
+.fn-streaming { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), rgb(0 0 0 / 0.35)); mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), rgb(0 0 0 / 0.35)); }
+@keyframes fn-card-in { from { opacity: 0; transform: translateY(6px); } }
+.fn-card-in { animation: fn-card-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+::view-transition-group(fn-composer) { animation-duration: 0.46s; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.22s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fn-lift, .fn-card-in { animation: none !important; }
+  .fn-streaming { -webkit-mask-image: none; mask-image: none; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fn-rise, .fn-pop, .fn-toast, .fn-flash, .fn-dot, .fn-nudge, .fn-ping::after, .recording,
   .fn-sway, .fn-breathe, .fn-shimmer, .fn-corner, .fn-step, .fn-arrive,

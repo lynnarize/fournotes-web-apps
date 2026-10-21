@@ -174,6 +174,12 @@ function namedNotes(notes: Note[], text: string): Note[] {
     const pick = hits.find((n) => n.id === open) ?? hits[0];
     if (pick && !out.includes(pick)) out.push(pick);
   }
+  // A note put in with "@" in the composer: "@Weekend trip ideas".
+  const lower = text.toLowerCase();
+  for (const n of live) {
+    const t = n.title.trim().toLowerCase();
+    if (t && lower.includes(`@${t}`) && !out.includes(n)) out.push(n);
+  }
   if (open && /\bthis note\b/i.test(text)) {
     const n = live.find((x) => x.id === open);
     if (n && !out.includes(n)) out.unshift(n);
