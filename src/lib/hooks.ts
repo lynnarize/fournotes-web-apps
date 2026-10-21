@@ -16,6 +16,19 @@ export function useOnline() {
   return online;
 }
 
+/** Whether a media query matches now (false until mounted). */
+export function useMedia(query: string) {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const update = () => setMatch(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, [query]);
+  return match;
+}
+
 // ---- "Install app" prompt (Chrome/Edge/Android) ----------------------------
 type InstallEvent = Event & { prompt(): Promise<void> };
 let deferred: InstallEvent | null = null;

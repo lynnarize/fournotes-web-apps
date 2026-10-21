@@ -169,79 +169,81 @@ export default function TodayView({ setTab }: { setTab: (t: Tab) => void }) {
   const freshAlerts = alerts.filter((a) => !said.some((l) => l.includes(a.toLowerCase().slice(0, 18))));
   const styleLabel = BRIEF_STYLES.find((s) => s.id === style)?.label ?? "One paragraph";
 
-  // Once you send, the conversation takes the page: the composer moves to the bottom.
-  if (todayChat) return <ChatDock conversation />;
-
+  // While you chat, the card takes the brief's place under the greeting; the rest of Today stays.
   return (
-    <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-start gap-10 pb-[136px] pt-5 md:pb-12 md:pt-[72px]">
+    <div className={`mx-auto flex w-full max-w-[1180px] flex-wrap items-start gap-10 pt-5 md:pb-12 ${todayChat ? "pb-6 md:pt-10" : "pb-[136px] md:pt-[72px]"}`}>
       <div className="flex min-w-0 flex-[999_1_480px] flex-col gap-6">
         <div className="flex flex-col gap-2.5 md:gap-3">
           <p className="text-[14px] text-[var(--text-secondary)]">{now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</p>
           <h2 className="fn-display text-[40px] md:text-[52px]">{greetingFor(now)}{firstName ? `, ${firstName}` : ""}</h2>
         </div>
 
-        {isEmptyApp ? (
-          <div className="fn-rise flex max-w-[600px] flex-col items-start gap-4">
-            <p className="text-[16px] leading-[1.6] text-[var(--text-secondary)] md:text-[18px]">
-              Nothing here yet. Tell the assistant what you need: a note, a task, or something you spent. Or look around with some sample data first.
+        {!todayChat && (
+          <>
+          {isEmptyApp ? (
+            <div className="fn-rise flex max-w-[600px] flex-col items-start gap-4">
+              <p className="text-[16px] leading-[1.6] text-[var(--text-secondary)] md:text-[18px]">
+                Nothing here yet. Tell the assistant what you need: a note, a task, or something you spent. Or look around with some sample data first.
+              </p>
+              <SampleDataButton label="Explore with sample data" className="btn btn-secondary" />
+            </div>
+          ) : style === "paragraph" ? (
+            <p className="fn-rise max-w-[600px] text-[16px] leading-[1.6] text-[var(--text-secondary)] md:text-[18px]">
+              {pieces.map((p, i) =>
+                p.target ? (
+                  <button key={i} type="button" onClick={() => follow(p.target!)} className={LINK}>{p.text}</button>
+                ) : (
+                  <span key={i}>{p.text}</span>
+                ),
+              )}
             </p>
-            <SampleDataButton label="Explore with sample data" className="btn btn-secondary" />
-          </div>
-        ) : style === "paragraph" ? (
-          <p className="fn-rise max-w-[600px] text-[16px] leading-[1.6] text-[var(--text-secondary)] md:text-[18px]">
-            {pieces.map((p, i) =>
-              p.target ? (
-                <button key={i} type="button" onClick={() => follow(p.target!)} className={LINK}>{p.text}</button>
+          ) : (
+            <div className="fn-rise flex max-w-[600px] flex-col gap-2.5 text-[16px] leading-[1.6] text-[var(--text-secondary)] md:text-[17px]">
+              {briefLines.length ? (
+                briefLines.slice(0, 3).map((l, i) => {
+                  const { glyph, text } = leadingEmoji(l);
+                  return <Row key={i} glyph={glyph}>{text}</Row>;
+                })
               ) : (
-                <span key={i}>{p.text}</span>
-              ),
-            )}
-          </p>
-        ) : (
-          <div className="fn-rise flex max-w-[600px] flex-col gap-2.5 text-[16px] leading-[1.6] text-[var(--text-secondary)] md:text-[17px]">
-            {briefLines.length ? (
-              briefLines.slice(0, 3).map((l, i) => {
-                const { glyph, text } = leadingEmoji(l);
-                return <Row key={i} glyph={glyph}>{text}</Row>;
-              })
-            ) : (
-              <>
-                <Row glyph={<Glyph name="calendarCheck" size={16} />}>
-                  {loading ? <span className="fn-shimmer">Reading your day</span> : online ? "Your daily brief will appear here." : "The brief will be written when you're back online."}
-                </Row>
-                {ySpend.length > 0 && <Row glyph={<Glyph name="wallet" size={16} />}>{formatMoney(yTotal, cur)} spent yesterday</Row>}
-              </>
-            )}
-            {freshAlerts.slice(0, 2).map((a) => (
-              <Row key={a} glyph={<Glyph name="warning" size={16} className="text-[var(--warning)]" />}>{a}</Row>
-            ))}
-          </div>
-        )}
-
-        {!isEmptyApp && (
-          <div className="-mb-2 -ml-3 -mt-2 flex flex-wrap items-center gap-1">
-            {style === "points" && (
-              <button type="button" className={QUIET} onClick={() => write(true)} disabled={loading || !online}>
-                <Glyph name="refresh" size={14} /> {loading ? "Writing…" : brief ? "Refresh brief" : "Write today's brief"}
-              </button>
-            )}
-            <Dropdown
-              label={`How the brief reads: ${styleLabel}`}
-              title="How the brief reads"
-              width={260}
-              chevron={false}
-              className={QUIET}
-              button={<>{styleLabel}<Glyph name="chevronDown" size={14} /></>}
-            >
-              {(close) => BRIEF_STYLES.map((s) => (
-                <MenuItem key={s.id} icon={s.icon} label={s.label} active={style === s.id} onSelect={() => { close(); setStyle(s.id); }} />
+                <>
+                  <Row glyph={<Glyph name="calendarCheck" size={16} />}>
+                    {loading ? <span className="fn-shimmer">Reading your day</span> : online ? "Your daily brief will appear here." : "The brief will be written when you're back online."}
+                  </Row>
+                  {ySpend.length > 0 && <Row glyph={<Glyph name="wallet" size={16} />}>{formatMoney(yTotal, cur)} spent yesterday</Row>}
+                </>
+              )}
+              {freshAlerts.slice(0, 2).map((a) => (
+                <Row key={a} glyph={<Glyph name="warning" size={16} className="text-[var(--warning)]" />}>{a}</Row>
               ))}
-            </Dropdown>
-          </div>
-        )}
-        {briefError && style === "points" && <p className="fn-rise -mt-3 text-[13px] text-[var(--text-secondary)]">{briefError}</p>}
+            </div>
+          )}
 
-        <div className="flex flex-col gap-6 md:mt-4">
+          {!isEmptyApp && (
+            <div className="-mb-2 -ml-3 -mt-2 flex flex-wrap items-center gap-1">
+              {style === "points" && (
+                <button type="button" className={QUIET} onClick={() => write(true)} disabled={loading || !online}>
+                  <Glyph name="refresh" size={14} /> {loading ? "Writing…" : brief ? "Refresh brief" : "Write today's brief"}
+                </button>
+              )}
+              <Dropdown
+                label={`How the brief reads: ${styleLabel}`}
+                title="How the brief reads"
+                width={260}
+                chevron={false}
+                className={QUIET}
+                button={<>{styleLabel}<Glyph name="chevronDown" size={14} /></>}
+              >
+                {(close) => BRIEF_STYLES.map((s) => (
+                  <MenuItem key={s.id} icon={s.icon} label={s.label} active={style === s.id} onSelect={() => { close(); setStyle(s.id); }} />
+                ))}
+              </Dropdown>
+            </div>
+          )}
+          {briefError && style === "points" && <p className="fn-rise -mt-3 text-[13px] text-[var(--text-secondary)]">{briefError}</p>}
+          </>
+        )}
+
+        <div className={`flex flex-col gap-6 ${todayChat ? "" : "md:mt-4"}`}>
           <ChatDock hero />
         </div>
       </div>

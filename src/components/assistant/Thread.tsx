@@ -1,7 +1,8 @@
 "use client";
-// The conversation, drawn the same way in the panel and on the full page: your message
-// in a bubble on the right; the reply unboxed, under a line naming the model, with what it
-// filed as small cards and a row of quiet actions (copy, retry, save, undo…).
+// The conversation, drawn the same way in Today's chat card and in the panel: your message
+// in a bubble on the right (it lifts in as you send); the reply unboxed, under a line naming
+// the model, revealed a few words at a time as it lands, with what it filed as small cards
+// and a row of quiet actions (copy, retry, save, undo…).
 import { useEffect, useRef, useState } from "react";
 import { useAiRoute } from "@/lib/aiRoute";
 import { formatMoney, useStore, type AppData, type ChangeLink } from "@/lib/store";
@@ -12,6 +13,7 @@ import { useToast } from "../ui";
 import Answer, { KindMark } from "./Answer";
 import { plainAnswer } from "./cite";
 import { Glyph, type GlyphName } from "./icons";
+import { markSeen, useFresh, useReveal } from "./Stream";
 
 /** What clicking things in a reply does; the dock closes itself before going anywhere. */
 export type ThreadHandlers = {
@@ -155,8 +157,17 @@ function WebSources({ sources }: { sources: { title: string; url: string }[] }) 
   );
 }
 
-/** The reply's content: the answer (with its citations), what it filed, and any web pages. */
-export function ReplyBody({ m, variant, handlers }: { m: UIMessage; variant: "compact" | "full"; handlers: ThreadHandlers }) {
+/**
+ * The reply's content: the answer (with its citations), what it filed, and any web pages.
+ * While it's still being revealed, `text` is the part shown so far and the rest waits.
+ */
+export function ReplyBody({ m, variant, handlers, text, revealing = false }: {
+  m: UIMessage;
+  variant: "compact" | "full";
+  handlers: ThreadHandlers;
+  text?: string;
+  revealing?: boolean;
+}) {
   if (m.error) {
     return (
       <p className="flex gap-2 text-[16px] leading-6 text-[var(--danger)]">
@@ -169,10 +180,10 @@ export function ReplyBody({ m, variant, handlers }: { m: UIMessage; variant: "co
   return (
     <>
       <div className="min-w-0 break-words">
-        <Answer text={m.content} sources={m.dataSources} variant={variant} onOpenSource={handlers.openSource} />
+        <Answer text={text ?? m.content} sources={m.dataSources} variant={variant} onOpenSource={handlers.openSource} revealing={revealing} />
       </div>
-      {!!m.filed?.length && <FiledCards m={m} onJump={handlers.jump} />}
-      {!!m.sources?.length && <WebSources sources={m.sources} />}
+      {!revealing && !!m.filed?.length && <FiledCards m={m} onJump={handlers.jump} />}
+      {!revealing && !!m.sources?.length && <WebSources sources={m.sources} />}
     </>
   );
 }
@@ -249,8 +260,9 @@ export function ModelLine({ name }: { name: string }) {
 }
 
 export function UserBubble({ m }: { m: UIMessage }) {
+  const fresh = useFresh(m.id);
   return (
-    <div className="fn-rise flex flex-col items-end gap-2">
+    <div className={`flex flex-col items-end gap-2 ${fresh ? "fn-lift" : ""}`}>
       {m.imageUrl && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={m.imageUrl} alt="The photo you sent" className="max-h-44 max-w-[85%] rounded-[14px] border border-[var(--border)] object-cover" />
@@ -268,11 +280,13 @@ export function UserBubble({ m }: { m: UIMessage }) {
 }
 
 export function Reply({ m, handlers }: { m: UIMessage; handlers: ThreadHandlers }) {
+  const fresh = useFresh(m.id);
+  const { shown, revealing } = useReveal(m.content, fresh && !m.error && !m.stopped);
   return (
-    <article aria-label="Reply" className="fn-rise flex min-w-0 flex-col gap-2.5">
+    <article aria-label="Reply" aria-busy={revealing} className={`flex min-w-0 flex-col gap-2.5 ${fresh ? "fn-rise" : ""}`}>
       {m.model && !m.error && !m.stopped && <ModelLine name={m.model} />}
-      <ReplyBody m={m} variant="compact" handlers={handlers} />
-      <ReplyActions m={m} variant="compact" handlers={handlers} />
+      <ReplyBody m={m} variant="compact" handlers={handlers} text={shown} revealing={revealing} />
+      {!revealing && <ReplyActions m={m} variant="compact" handlers={handlers} />}
     </article>
   );
 }
@@ -295,15 +309,60 @@ const STARTERS: { text: string; send: boolean }[] = [
   { text: "Remind me to ", send: false },
 ];
 
-/** The panel's conversation, scrolled to the newest message. */
+/**
+ * The conversation, following the newest line while you're at the bottom. Scrolling up lets
+ * go of it and offers "Jump to latest".
+ */
 export function Thread({ handlers, onStarter }: { handlers: ThreadHandlers; onStarter: (text: string, send: boolean) => void }) {
   const { messages, busy } = useAssistant();
+  // What was already here when this view opened is drawn as it is, not replayed.
+  useState(() => markSeen(messages.map((m) => m.id)));
   const listRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const stuck = useRef(true);
+  const [behind, setBehind] = useState(false);
+
+  // Follow the text as it grows (a reply being revealed, cards popping in) while stuck to the bottom.
   useEffect(() => {
+    const list = listRef.current;
+    const body = bodyRef.current;
+    if (!list || !body) return;
+    list.scrollTop = list.scrollHeight;
+    const ro = new ResizeObserver(() => {
+      if (stuck.current) list.scrollTop = list.scrollHeight;
+      else setBehind(true);
+    });
+    ro.observe(body);
+    return () => ro.disconnect();
+  }, []);
+  // A new message of your own always brings the conversation back to the bottom.
+  const count = messages.length;
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || messages[count - 1]?.role !== "user") return;
+    stuck.current = true;
+    setBehind(false);
+    list.scrollTo({ top: list.scrollHeight, behavior: "smooth" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [count]);
+
+  const onScroll = () => {
+    const list = listRef.current;
+    if (!list) return;
+    const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 32;
+    stuck.current = atBottom;
+    if (atBottom) setBehind(false);
+  };
+  const jump = () => {
+    stuck.current = true;
+    setBehind(false);
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, busy]);
+  };
+
   return (
-    <div ref={listRef} role="log" aria-label="Conversation" aria-live="polite" className="scroll-thin flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-4 pb-3 pt-6">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+    <div ref={listRef} onScroll={onScroll} role="log" aria-label="Conversation" aria-live="polite" className="scroll-thin flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-3 pt-6">
+    <div ref={bodyRef} className="flex flex-1 flex-col gap-6">
       {!messages.length && !busy && (
         <div className="m-auto flex max-w-[320px] flex-col items-center gap-4 text-center">
           <p className="text-[14px] text-[var(--text-secondary)]">Ask about your notes, tasks and spending, or tell me what to add.</p>
@@ -318,6 +377,17 @@ export function Thread({ handlers, onStarter }: { handlers: ThreadHandlers; onSt
       )}
       {messages.map((m) => (m.role === "user" ? <UserBubble key={m.id} m={m} /> : <Reply key={m.id} m={m} handlers={handlers} />))}
       {busy && <Thinking label={busy} />}
+    </div>
+    </div>
+      {behind && (
+        <button
+          type="button"
+          onClick={jump}
+          className="fn-pop absolute bottom-2 left-1/2 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] pl-2.5 pr-3 text-[13px] text-[var(--text-secondary)] shadow-[var(--shadow-floating)] transition-colors hover:text-[var(--foreground)]"
+        >
+          <Glyph name="arrowDown" size={14} /> Jump to latest
+        </button>
+      )}
     </div>
   );
 }
